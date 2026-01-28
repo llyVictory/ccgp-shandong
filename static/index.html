@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>山东省政府采购意向爬虫控制台</title>
+    <style>
+        :root {
+            --primary: #6366f1;
+            --bg: #0f172a;
+            --card: #1e293b;
+            --text: #f8fafc;
+        }
+
+        body {
+            font-family: 'Segoe UI', Roboto, sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+        }
+
+        .container {
+            background: var(--card);
+            padding: 2.5rem;
+            border-radius: 1.5rem;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            width: 100%;
+            max-width: 500px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        h1 {
+            text-align: center;
+            margin-bottom: 2rem;
+            font-size: 1.75rem;
+            background: linear-gradient(to right, #818cf8, #c084fc);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-size: 0.875rem;
+            color: #94a3b8;
+        }
+
+        select,
+        input {
+            width: 100%;
+            padding: 0.75rem;
+            border-radius: 0.5rem;
+            border: 1px solid #334155;
+            background: #0f172a;
+            color: white;
+            box-sizing: border-box;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        select:focus,
+        input:focus {
+            border-color: var(--primary);
+        }
+
+        button {
+            width: 100%;
+            padding: 0.75rem;
+            border-radius: 0.5rem;
+            border: none;
+            background: var(--primary);
+            color: white;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.1s, opacity 0.2s;
+            margin-top: 1rem;
+        }
+
+        button:hover {
+            opacity: 0.9;
+        }
+
+        button:active {
+            transform: scale(0.98);
+        }
+
+        #status {
+            margin-top: 1.5rem;
+            text-align: center;
+            padding: 1rem;
+            border-radius: 0.5rem;
+            display: none;
+        }
+
+        .running {
+            background: rgba(99, 102, 241, 0.1);
+            color: #818cf8;
+        }
+
+        .completed {
+            background: rgba(34, 197, 94, 0.1);
+            color: #4ade80;
+        }
+
+        .failed {
+            background: rgba(239, 68, 68, 0.1);
+            color: #f87171;
+        }
+
+        #downloadBtn {
+            display: none;
+            background: #22c55e;
+            margin-top: 1rem;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>山东政采爬虫控制台</h1>
+        <div class="form-group">
+            <label>省级 / 市区县</label>
+            <select id="area">
+                <option value="370000">山东省本级</option>
+                <option value="370100">济南市</option>
+                <option value="370200">青岛市</option>
+                <option value="370300">淄博市</option>
+                <option value="370400">枣庄市</option>
+                <option value="370500">东营市</option>
+                <option value="370600">烟台市</option>
+                <option value="370700">潍坊市</option>
+                <option value="370800">济宁市</option>
+                <option value="370900">泰安市</option>
+                <option value="371000">威海市</option>
+                <option value="371100">日照市</option>
+                <option value="371300">临沂市</option>
+                <option value="371400">德州市</option>
+                <option value="371500">聊城市</option>
+                <option value="371600">滨州市</option>
+                <option value="371700">菏泽市</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>快速时间范围</label>
+            <select id="quickTime">
+                <option value="custom">自定义</option>
+                <option value="7">近7天</option>
+                <option value="30">近30天</option>
+                <option value="180">近半年</option>
+                <option value="365">近一年</option>
+                <option value="1095">近三年</option>
+            </select>
+        </div>
+        <div class="form-group" id="customTimeRange">
+            <div class="form-group">
+                <label>开始日期</label>
+                <input type="date" id="startTime">
+            </div>
+            <div class="form-group">
+                <label>结束日期</label>
+                <input type="date" id="endTime">
+            </div>
+        </div>
+        <div class="form-group">
+            <label>爬取页数 (每页10条)</label>
+            <input type="number" id="maxPages" value="5" min="1">
+        </div>
+        <button id="startBtn">开始爬取</button>
+        <div id="status"></div>
+        <div id="logConsole">
+            <div
+                style="font-size: 0.75rem; color: #64748b; margin-bottom: 0.5rem; display: flex; justify-content: space-between;">
+                <span>实时日志</span>
+                <span id="logCount">0 lines</span>
+            </div>
+            <div id="logContent"></div>
+        </div>
+        <button id="downloadBtn">下载结果 (Excel)</button>
+    </div>
+
+    <style>
+        /* New styles for log console */
+        #logConsole {
+            margin-top: 1.5rem;
+            background: #020617;
+            border-radius: 0.5rem;
+            padding: 0.75rem;
+            border: 1px solid #1e293b;
+            display: none;
+        }
+
+        #logContent {
+            height: 150px;
+            overflow-y: auto;
+            font-family: 'Consolas', monospace;
+            font-size: 0.75rem;
+            line-height: 1.4;
+            color: #94a3b8;
+            word-break: break-all;
+        }
+
+        .log-entry {
+            margin-bottom: 0.25rem;
+            border-bottom: 1px solid #1e293b;
+            padding-bottom: 0.25rem;
+        }
+
+        .log-url {
+            color: #38bdf8;
+            text-decoration: underline;
+            cursor: pointer;
+        }
+    </style>
+
+    <script>
+        let currentTaskId = null;
+        const startBtn = document.getElementById('startBtn');
+        const downloadBtn = document.getElementById('downloadBtn');
+        const statusDiv = document.getElementById('status');
+        const quickTime = document.getElementById('quickTime');
+        const customTimeRange = document.getElementById('customTimeRange');
+        const logConsole = document.getElementById('logConsole');
+        const logContent = document.getElementById('logContent');
+        const logCount = document.getElementById('logCount');
+
+        quickTime.onchange = () => {
+            if (quickTime.value === 'custom') {
+                customTimeRange.style.display = 'block';
+            } else {
+                customTimeRange.style.display = 'none';
+                updateDatesByQuickRange(parseInt(quickTime.value));
+            }
+        };
+
+        function updateDatesByQuickRange(days) {
+            const end = new Date();
+            const start = new Date();
+            start.setDate(end.getDate() - days);
+
+            document.getElementById('startTime').value = start.toISOString().split('T')[0];
+            document.getElementById('endTime').value = end.toISOString().split('T')[0];
+        }
+
+        startBtn.onclick = async () => {
+            const data = {
+                area: document.getElementById('area').value,
+                startTime: document.getElementById('startTime').value,
+                endTime: document.getElementById('endTime').value,
+                maxPages: parseInt(document.getElementById('maxPages').value)
+            };
+
+            startBtn.disabled = true;
+            statusDiv.style.display = 'block';
+            statusDiv.className = 'running';
+            statusDiv.innerText = '正在执行爬取任务，请稍候...';
+            downloadBtn.style.display = 'none';
+            logConsole.style.display = 'block';
+            logContent.innerHTML = '';
+
+            try {
+                const resp = await fetch('/api/crawl', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                const { task_id } = await resp.json();
+                currentTaskId = task_id;
+                checkStatus();
+            } catch (e) {
+                statusDiv.className = 'failed';
+                statusDiv.innerText = '启动失败: ' + e.message;
+                startBtn.disabled = false;
+            }
+        };
+
+        async function checkStatus() {
+            if (!currentTaskId) return;
+
+            try {
+                const resp = await fetch('/api/status/' + currentTaskId);
+                const result = await resp.json();
+
+                // Update logs
+                if (result.logs) {
+                    logCount.innerText = result.logs.length + ' lines';
+                    logContent.innerHTML = result.logs.map(line => {
+                        // Make URLs clickable
+                        const urlMatch = line.match(/(http:\/\/[^\s]+)/);
+                        if (urlMatch) {
+                            const url = urlMatch[1];
+                            const safeLine = line.replace(url, `<span class="log-url" onclick="window.open('${url}', '_blank')">${url}</span>`);
+                            return `<div class="log-entry">${safeLine}</div>`;
+                        }
+                        return `<div class="log-entry">${line}</div>`;
+                    }).join('');
+                    logContent.scrollTop = logContent.scrollHeight;
+                }
+
+                if (result.status === 'running') {
+                    setTimeout(checkStatus, 2000);
+                } else if (result.status === 'completed') {
+                    statusDiv.className = 'completed';
+                    statusDiv.innerText = '爬取完成！共生成 1 个文件。';
+                    downloadBtn.style.display = 'block';
+                    startBtn.disabled = false;
+                } else {
+                    statusDiv.className = 'failed';
+                    statusDiv.innerText = '任务失败: ' + (result.error || '未知错误');
+                    startBtn.disabled = false;
+                }
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        downloadBtn.onclick = () => {
+            window.location.href = '/api/download/' + currentTaskId;
+        };
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,8 @@
+venv/
+__pycache__/
+*.xlsx
+*.log
+.env
+static/output_*.xlsx
+test_*.py
+test_api_debug.py
