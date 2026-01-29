@@ -4,5 +4,5 @@ __pycache__/
 *.log
 .env
 static/output_*.xlsx
-test_*.py
+# test_*.py
 test_api_debug.py

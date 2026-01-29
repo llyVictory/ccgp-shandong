@@ -175,6 +175,10 @@
             <label>爬取页数 (每页10条)</label>
             <input type="number" id="maxPages" value="5" min="1">
         </div>
+        <div class="form-group" style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+            <input type="checkbox" id="useProxy" checked style="width: auto;">
+            <label for="useProxy" style="margin-bottom: 0; cursor: pointer;">启用 Clash 代理 (127.0.0.1:7897)</label>
+        </div>
         <button id="startBtn">开始爬取</button>
         <div id="status"></div>
         <div id="logConsole">
@@ -256,7 +260,8 @@
                 area: document.getElementById('area').value,
                 startTime: document.getElementById('startTime').value,
                 endTime: document.getElementById('endTime').value,
-                maxPages: parseInt(document.getElementById('maxPages').value)
+                maxPages: parseInt(document.getElementById('maxPages').value),
+                useProxy: document.getElementById('useProxy').checked
             };
 
             startBtn.disabled = true;

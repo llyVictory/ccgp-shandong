@@ -25,6 +25,7 @@ class CrawlRequest(BaseModel):
     endTime: str = ""
     maxPages: int = 5
     title: str = ""
+    useProxy: bool = True
 
 @app.get("/")
 async def read_index():
@@ -64,7 +65,7 @@ def run_spider_task(task_id: str, req: CrawlRequest):
                 tasks[task_id]["logs"].pop(0)
 
     try:
-        spider = Shandong()
+        spider = Shandong(use_proxy=req.useProxy)
         # Mocking print for the spider object just for this call
         # Since the spider uses 'print', we capture it
         f = io.StringIO()

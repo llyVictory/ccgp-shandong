@@ -10,24 +10,63 @@ from concurrent.futures import ThreadPoolExecutor
 import random
 
 class Shandong(object):
-    def __init__(self):
+    def __init__(self, use_proxy=True):
         self.list_url = "http://www.ccgp-shandong.gov.cn:8087/api/website/site/getListByCode"
         self.detail_url = "http://www.ccgp-shandong.gov.cn:8087/api/website/site/getDetail"
         self.user_agents = [
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36",
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
-            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/121.0",
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Edg/120.0.0.0"
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
         ]
         self.colCode = "2500" # 政采意向
-        # Clash 默认代理配置 (127.0.0.1:7890)
-        # 如果需要关闭代理，将 self.proxies 设为 None
-        # self.proxies = {
-        #     "http": "http://127.0.0.1:7897",
-        #     "https": "http://127.0.0.1:7897",
-        # }
+        
+        self.use_proxy = use_proxy
+        self.proxies = None
+        if self.use_proxy:
+            self.proxies = {
+                "http": "http://127.0.0.1:7897",
+                "https": "http://127.0.0.1:7897",
+            }
+        
         self.log_func = None
+        
+        # 仅在启用代理时检查状态
+        if self.use_proxy:
+            self.check_proxy()
+        else:
+            self._log("="*50)
+            self._log("⚠️ 代理已禁用，将使用本地直接连接。")
+            self._log("="*50)
+
+    def check_proxy(self):
+        """检查代理是否生效并获取出口IP位置"""
+        self._log("="*50)
+        self._log("正在检查网络出口环境...")
+        test_url = "http://ip-api.com/json?lang=zh-CN"
+        proxies = self.proxies
+        
+        try:
+            # 1. 获取代理出口信息
+            resp = requests.get(test_url, proxies=proxies, timeout=10)
+            if resp.status_code == 200:
+                data = resp.json()
+                ip = data.get("query")
+                country = data.get("country", "")
+                region = data.get("regionName", "")
+                city = data.get("city", "")
+                isp = data.get("isp", "")
+                
+                self._log(f"✅ 代理已生效！")
+                self._log(f"   当前探测出口 IP: {ip}")
+                self._log(f"   物理地理位置: {country} - {region} - {city}")
+                self._log(f"   运营商信息: {isp}")
+            else:
+                self._log(f"⚠️ 代理连接测试返回状态码: {resp.status_code}")
+        except Exception as e:
+            self._log(f"❌ 代理连接失败！请检查 Clash (127.0.0.1:7897) 是否开启。")
+            self._log(f"   错误详情: {e}")
+        
+        self._log("="*50)
 
     def _log(self, msg):
         if self.log_func:
@@ -37,9 +76,15 @@ class Shandong(object):
 
     def get_headers(self):
         return {
-            "Content-Type": "application/json;charset=utf-8",
-            "User-Agent": random.choice(self.user_agents),
-            "Referer": "http://www.ccgp-shandong.gov.cn/xxgk"
+            "accept": "application/json, text/plain, */*",
+            # "accept-encoding": "gzip, deflate", # requests usually handles this
+            "accept-language": "zh-CN,zh;q=0.9",
+            "connection": "keep-alive",
+            "content-type": "application/json;charset=UTF-8",
+            "host": "www.ccgp-shandong.gov.cn:8087",
+            "origin": "http://www.ccgp-shandong.gov.cn",
+            "referer": "http://www.ccgp-shandong.gov.cn/",
+            "user-agent": random.choice(self.user_agents)
         }
     def get_list(self, page, title="", start_time="", end_time="", area="370000"):
         # Date format must be YYYY-MM-DD HH:mm:ss
@@ -64,10 +109,20 @@ class Shandong(object):
             "mergeType": 0
         }
         try:
-            self._log(f"Requesting List: {self.list_url} (Page {page}, Area {area}, Range {start_time}~{end_time})")
-            # Rate limiting: random sleep between 1.5 to 3.5 seconds
-            time.sleep(random.uniform(1.5, 3.5))
-            resp = requests.post(self.list_url, json=data, headers=self.get_headers(), timeout=15, proxies=self.proxies)
+            self._log(f"正在请求列表页: 第 {page} 页 (地区: {area}, 搜索词: {title})")
+            # 强化反爬：列表页请求间隔 3.0 - 6.0 秒
+            time.sleep(random.uniform(3.0, 6.0))
+            
+            resp = requests.post(self.list_url, json=data, headers=self.get_headers(), timeout=20, proxies=self.proxies)
+            
+            # 状态码监控
+            if resp.status_code in [403, 429]:
+                self._log("🔥 警告: 触发服务器拦截 (403/429)，立即停止爬取以保护 IP！")
+                return [], -1
+            elif resp.status_code >= 500:
+                self._log(f"🔥 警告: 目标服务器过载或出错 (错误码: {resp.status_code})，停止爬取，避免加重负担！")
+                return [], -1
+                
             if resp.status_code == 200:
                 j = resp.json()
                 # Assuming structure: j['data']['data']['records'] based on investigation
@@ -90,9 +145,14 @@ class Shandong(object):
             "oldData": 0
         }
         try:
-            # Rate limiting for detail pages as well
-            time.sleep(random.uniform(1.0, 2.5))
-            resp = requests.get(self.detail_url, params=params, headers=self.get_headers(), timeout=15, proxies=self.proxies)
+            # 强化反爬：详情页请求间隔 2.0 - 5.0 秒
+            time.sleep(random.uniform(2.0, 5.0))
+            resp = requests.get(self.detail_url, params=params, headers=self.get_headers(), timeout=20, proxies=self.proxies)
+            
+            if resp.status_code in [403, 429]:
+                self._log(f"🔥 详情页 {id_val} 触发拦截，跳过...")
+                return None
+                
             if resp.status_code == 200:
                 j = resp.json()
                 if j.get("data") and j["data"].get("data") and j["data"]["data"].get("body"):
@@ -200,22 +260,29 @@ class Shandong(object):
              # Usually pages >= 1 if records > 0
              pages_to_crawl = 1
         
-        # Process page 1
+        # 降低并发：max_workers 从 5 降至 2
         if records:
-            with ThreadPoolExecutor(max_workers=5) as executor:
+            with ThreadPoolExecutor(max_workers=2) as executor:
                 futures = [executor.submit(self.process_item, rec) for rec in records]
                 for f in futures:
-                    all_data.extend(f.result())
+                    res = f.result()
+                    if res: all_data.extend(res)
         
-        # Process other pages
+        # 处理后续页面
         for p in range(2, pages_to_crawl + 1):
-            self._log(f"Processing page {p}...")
-            records, _ = self.get_list(p, title, start_time, end_time, area)
-            with ThreadPoolExecutor(max_workers=5) as executor:
-                futures = [executor.submit(self.process_item, rec) for rec in records]
-                for f in futures:
-                    all_data.extend(f.result())
-            time.sleep(1) # Be nice
+            self._log(f"--- 准备翻阅第 {p} 页 ---")
+            # 页际长休眠：3.0 - 8.0 秒
+            time.sleep(random.uniform(3.0, 8.0))
+            
+            records, total = self.get_list(p, title, start_time, end_time, area)
+            if total == -1: break # 触发熔断
+            
+            if records:
+                with ThreadPoolExecutor(max_workers=2) as executor:
+                    futures = [executor.submit(self.process_item, rec) for rec in records]
+                    for f in futures:
+                        res = f.result()
+                        if res: all_data.extend(res)
             
         return all_data
 
