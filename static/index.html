@@ -30,7 +30,7 @@
             border-radius: 1.5rem;
             box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
             width: 100%;
-            max-width: 500px;
+            max-width: 900px;
             backdrop-filter: blur(10px);
             border: 1px solid rgba(255, 255, 255, 0.1);
         }
@@ -40,6 +40,7 @@
             margin-bottom: 2rem;
             font-size: 1.75rem;
             background: linear-gradient(to right, #818cf8, #c084fc);
+            background-clip: text;
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
         }
@@ -129,6 +130,10 @@
     <div class="container">
         <h1>山东政采爬虫控制台</h1>
         <div class="form-group">
+            <label>搜索关键词 (可选)</label>
+            <input type="text" id="keyword" placeholder="例如：林地、荒漠化...">
+        </div>
+        <div class="form-group">
             <label>省级 / 市区县</label>
             <select id="area">
                 <option value="370000">山东省本级</option>
@@ -155,13 +160,13 @@
             <select id="quickTime">
                 <option value="custom">自定义</option>
                 <option value="7">近7天</option>
-                <option value="30">近30天</option>
+                <option value="30" selected>近30天</option>
                 <option value="180">近半年</option>
                 <option value="365">近一年</option>
                 <option value="1095">近三年</option>
             </select>
         </div>
-        <div class="form-group" id="customTimeRange">
+        <div id="customTimeRange" style="display: none; gap: 1rem; grid-template-columns: 1fr 1fr;">
             <div class="form-group">
                 <label>开始日期</label>
                 <input type="date" id="startTime">
@@ -171,12 +176,18 @@
                 <input type="date" id="endTime">
             </div>
         </div>
-        <div class="form-group">
-            <label>爬取页数 (每页10条)</label>
-            <input type="number" id="maxPages" value="5" min="1">
+        <div class="form-group" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+            <div>
+                <label>起始页码</label>
+                <input type="number" id="startPage" value="1" min="1">
+            </div>
+            <div>
+                <label>爬取页数 (每页10条)</label>
+                <input type="number" id="maxPages" value="1" min="1">
+            </div>
         </div>
         <div class="form-group" style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
-            <input type="checkbox" id="useProxy" checked style="width: auto;">
+            <input type="checkbox" id="useProxy" style="width: auto;">
             <label for="useProxy" style="margin-bottom: 0; cursor: pointer;">启用 Clash 代理 (127.0.0.1:7897)</label>
         </div>
         <button id="startBtn">开始爬取</button>
@@ -204,13 +215,14 @@
         }
 
         #logContent {
-            height: 150px;
+            height: 350px;
             overflow-y: auto;
             font-family: 'Consolas', monospace;
             font-size: 0.75rem;
             line-height: 1.4;
             color: #94a3b8;
             word-break: break-all;
+            padding: 0.5rem;
         }
 
         .log-entry {
@@ -239,7 +251,7 @@
 
         quickTime.onchange = () => {
             if (quickTime.value === 'custom') {
-                customTimeRange.style.display = 'block';
+                customTimeRange.style.display = 'grid';
             } else {
                 customTimeRange.style.display = 'none';
                 updateDatesByQuickRange(parseInt(quickTime.value));
@@ -256,11 +268,16 @@
         }
 
         startBtn.onclick = async () => {
-            const data = {
+            const startTime = document.getElementById('startTime').value;
+            const endTime = document.getElementById('endTime').value;
+
+            const payload = {
                 area: document.getElementById('area').value,
-                startTime: document.getElementById('startTime').value,
-                endTime: document.getElementById('endTime').value,
+                startTime: startTime,
+                endTime: endTime,
+                startPage: parseInt(document.getElementById('startPage').value),
                 maxPages: parseInt(document.getElementById('maxPages').value),
+                title: document.getElementById('keyword').value,
                 useProxy: document.getElementById('useProxy').checked
             };
 
@@ -276,7 +293,7 @@
                 const resp = await fetch('/api/crawl', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(data)
+                    body: JSON.stringify(payload)
                 });
                 const { task_id } = await resp.json();
                 currentTaskId = task_id;
@@ -331,6 +348,9 @@
         downloadBtn.onclick = () => {
             window.location.href = '/api/download/' + currentTaskId;
         };
+
+        // Initialize default date range
+        updateDatesByQuickRange(30);
     </script>
 </body>
 

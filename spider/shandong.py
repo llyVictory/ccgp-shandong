@@ -10,7 +10,7 @@ from concurrent.futures import ThreadPoolExecutor
 import random
 
 class Shandong(object):
-    def __init__(self, use_proxy=True):
+    def __init__(self, use_proxy=False):
         self.list_url = "http://www.ccgp-shandong.gov.cn:8087/api/website/site/getListByCode"
         self.detail_url = "http://www.ccgp-shandong.gov.cn:8087/api/website/site/getDetail"
         self.user_agents = [
@@ -110,8 +110,8 @@ class Shandong(object):
         }
         try:
             self._log(f"正在请求列表页: 第 {page} 页 (地区: {area}, 搜索词: {title})")
-            # 强化反爬：列表页请求间隔 3.0 - 6.0 秒
-            time.sleep(random.uniform(3.0, 6.0))
+            # 严格反爬：列表页请求前随机休眠 2-5 秒
+            time.sleep(random.uniform(2.0, 5.0))
             
             resp = requests.post(self.list_url, json=data, headers=self.get_headers(), timeout=20, proxies=self.proxies)
             
@@ -145,7 +145,7 @@ class Shandong(object):
             "oldData": 0
         }
         try:
-            # 强化反爬：详情页请求间隔 2.0 - 5.0 秒
+            # 严格反爬：详情页请求前随机休眠 2-5 秒
             time.sleep(random.uniform(2.0, 5.0))
             resp = requests.get(self.detail_url, params=params, headers=self.get_headers(), timeout=20, proxies=self.proxies)
             
@@ -169,120 +169,239 @@ class Shandong(object):
         return None
 
     def parse_html_table(self, html):
+        """
+        [V3.1] 终极解析方案：自动纠错与去重 (Fixed)
+        1. 必须包含 '序号' 列才视为有效清单表。
+        2. 使用 recursive=False 并支持 tbody 查找。
+        3. 智能列偏移校正：检测到“序号”列由长文本占据时，自动触发 Left-Shift 修正。
+        4. 全局去重：防止同一项目被多次提取。
+        """
         if not html:
             return []
         soup = BeautifulSoup(html, 'lxml')
         tables = soup.find_all('table')
         results = []
-        for table in tables:
-            # Check headers
-            rows = table.find_all('tr')
-            if not rows:
+        seen_titles = set()
+        
+        self._log(f"Debug: Found {len(tables)} tables")
+        
+        for table_idx, table in enumerate(tables):
+            # 优先查找直接子节点 tr，若无则查找 tbody 下的 tr
+            rows = table.find_all('tr', recursive=False)
+            if len(rows) < 2: 
+                tbody = table.find('tbody', recursive=False)
+                if tbody:
+                    rows = tbody.find_all('tr', recursive=False)
+            
+            if len(rows) < 2: 
                 continue
             
-            headers = [th.get_text(strip=True) for th in rows[0].find_all(['td', 'th'])]
-            # Looking for headers like "项目名称", "金额", "时间"
-            # Typical headers: 序号, 项目名称, 采购需求概况, 预算金额(万元), 预计采购时间, 备注
-            name_idx = -1
-            amt_idx = -1
-            time_idx = -1
+            # 1. 精确寻找表头行
+            header_row_idx = -1
+            col_map = {
+                "sub_index": -1, "project_name": -1, "desc": -1, 
+                "amount": -1, "sme_reserve": -1, "est_time": -1, "remark": -1
+            }
             
-            for i, h in enumerate(headers):
-                if "项目名称" in h:
-                    name_idx = i
-                elif "金额" in h or "预算" in h:
-                    amt_idx = i
-                elif "时间" in h:
-                    time_idx = i
+            # 搜索前 6 行寻找表头
+            for idx, tr in enumerate(rows[:6]):
+                cells = tr.find_all(['td', 'th'], recursive=False)
+                headers = [c.get_text(strip=True) for c in cells]
+                
+                temp_map = {k: -1 for k in col_map}
+                for i, h in enumerate(headers):
+                    if "序号" in h: temp_map["sub_index"] = i
+                    elif "名称" in h: temp_map["project_name"] = i
+                    elif "概况" in h or "需求" in h: temp_map["desc"] = i
+                    elif "金额" in h: temp_map["amount"] = i
+                    elif "中小企业" in h: temp_map["sme_reserve"] = i
+                    elif "时间" in h: temp_map["est_time"] = i
+                    elif "备注" in h: temp_map["remark"] = i
+                
+                # 严格标准：必须找到“序号”和“项目名称”才视为有效表头
+                if temp_map["sub_index"] != -1 and temp_map["project_name"] != -1:
+                    header_row_idx = idx
+                    col_map = temp_map
+                    break
             
-            if name_idx != -1:
-                # Valid table
-                for row in rows[1:]:
-                    cols = row.find_all('td')
-                    if len(cols) > max(name_idx, amt_idx, time_idx):
-                        item = {}
-                        item['project_name'] = cols[name_idx].get_text(strip=True)
-                        item['amount'] = cols[amt_idx].get_text(strip=True) if amt_idx != -1 else ""
-                        item['est_time'] = cols[time_idx].get_text(strip=True) if time_idx != -1 else ""
-                        results.append(item)
+            if header_row_idx == -1:
+                continue
+
+            # 2. 从表头下一行开始遍历数据
+            for row in rows[header_row_idx+1:]:
+                cols = row.find_all(['td', 'th'], recursive=False)
+                if len(cols) < 2: continue
+                
+                def get_clean_text(idx):
+                    if idx != -1 and idx < len(cols):
+                        txt = cols[idx].get_text(" ", strip=True) # 使用空格连接标签内容
+                        txt = txt.replace("\n", " ").replace("\r", " ").replace("\t", " ")
+                        while "  " in txt: 
+                            txt = txt.replace("  ", " ")
+                        return txt.strip()
+                    return ""
+
+                # 提取原始数据
+                raw_idx_val = get_clean_text(col_map["sub_index"])
+                raw_name_val = get_clean_text(col_map["project_name"])
+                
+                # 3. 智能错位修正 (Data Shift Correction)
+                is_shifted = False
+                # 如果序号列内容长度超过5且不是纯数字，极有可能是项目名称挤占了序号列
+                if len(raw_idx_val) > 5 and not raw_idx_val.isdigit():
+                    is_shifted = True
+                
+                item = {}
+                if is_shifted:
+                    # 错位处理：物理列重映射
+                    # 假定物理顺序列：[Name, Desc, Amount, SME, Time, Remark] (Index丢失)
+                    # 强制按物理顺序读取
+                    phy_cols = [c.get_text(" ", strip=True).replace("\n","").replace("\r","").strip() for c in cols]
+                    # 清洗物理列中的多余空格
+                    phy_cols = [" ".join(p.split()) for p in phy_cols]
+                    while len(phy_cols) < 7: phy_cols.append("")
+                    
+                    item = {
+                        "子序号": "", 
+                        "采购项目名称": phy_cols[0],
+                        "采购需求概况": phy_cols[1],
+                        "预算金额(万元)": phy_cols[2],
+                        "拟面向中小企业预留": phy_cols[3],
+                        "预计采购时间": phy_cols[4],
+                        "备注": phy_cols[5] if len(phy_cols)>5 else ""
+                    }
+                else:
+                    # 正常映射
+                    item = {
+                        "子序号": raw_idx_val,
+                        "采购项目名称": raw_name_val,
+                        "采购需求概况": get_clean_text(col_map["desc"]),
+                        "预算金额(万元)": get_clean_text(col_map["amount"]),
+                        "拟面向中小企业预留": get_clean_text(col_map["sme_reserve"]),
+                        "预计采购时间": get_clean_text(col_map["est_time"]),
+                        "备注": get_clean_text(col_map["remark"])
+                    }
+
+                # 4. 有效性校验
+                if not item["采购项目名称"] or item["采购项目名称"] in ["采购项目名称", "项目名称", "名称"]:
+                    continue
+                
+                # 5. 全局去重 (使用 项目名称+金额 作为指纹)
+                unique_key = item["采购项目名称"] + item["预算金额(万元)"]
+                if unique_key in seen_titles:
+                    continue
+                seen_titles.add(unique_key)
+
+                results.append(item)
+                    
         return results
 
     def process_item(self, record):
-        # record has id, title, userName (client name), areaName (city), date, colCode
+        # record 包含列表页字段: id, title, userName, areaName, date, buyKindCode...
         full_link = f"http://www.ccgp-shandong.gov.cn/detail?id={record['id']}&colCode={record['colCode']}&oldData={record['oldData']}"
-        self._log(f"[{record.get('areaName', '未知')}] 正在爬取详情: {record.get('title', '无标题')}")
-        self._log(f"   URL: {full_link}")
+        self._log(f"[{record.get('areaName', '未知')}] 解析中: {record.get('title', '无标题')}")
         
         html = self.get_detail_html(record['id'], record['colCode'])
-        projects = self.parse_html_table(html)
+        child_rows = self.parse_html_table(html)
         
         final_rows = []
-        if projects:
-            for i, p in enumerate(projects):
-                row = {
-                    "序号": i + 1, # relative to list, or just global? User example "1"
-                    "分类1": "",
-                    "分类2": "政采意向",
-                    "地市": record.get("areaName", ""),
-                    "客户名称": record.get("userName", ""),
-                    "项目名称": p['project_name'],
-                    "金额": p['amount'],
-                    "预计时间": p['est_time'],
-                    "link": full_link
-                }
+        
+        # 基础父级字段 (Parent Fields)
+        parent_info = {
+            "地区": record.get("areaName", ""),
+            "标题": record.get("title", ""),
+            "采购方式": record.get("buyKindCode", ""), # 若API未返回则由外部填充
+            "项目类型": record.get("projectType", ""),
+            "发布时间": record.get("date", ""),
+            "Link": full_link
+        }
+
+        if child_rows:
+            # 有详情页表格数据：One Parent -> Many Children
+            for child in child_rows:
+                row = parent_info.copy()
+                row.update(child) # 合并子字段
                 final_rows.append(row)
         else:
-            # If no table found, maybe correct logic is different or it's a unstructured text.
-            # Fallback: use title as project name?
-            row = {
-                "序号": 1,
-                "分类1": "",
-                "分类2": "政采意向",
-                "地市": record.get("areaName", ""),
-                "客户名称": record.get("userName", ""),
-                "项目名称": record.get("title", ""),
-                "金额": "",
-                "预计时间": "",
-                "link": full_link
-            }
+            # 无详情页表格数据：One Parent -> Empty Child (保留一行)
+            row = parent_info.copy()
+            # 填充空的子字段
+            row.update({
+                "子序号": "1",
+                "采购项目名称": record.get("title", ""), # 兜底：用大标题
+                "采购需求概况": "详情页未解析到表格",
+                "预算金额(万元)": "",
+                "拟面向中小企业预留": "",
+                "预计采购时间": "",
+                "备注": ""
+            })
             final_rows.append(row)
+            
         return final_rows
 
-    def run(self, max_pages=5, title="", start_time="", end_time="", area="370000"):
+    def run(self, max_pages=1, start_page=1, title="", start_time="", end_time="", area="370000"):
+        from spider.browser_engine import BrowserEngine
+        
         all_data = []
-        # First get total pages
-        records, total_pages = self.get_list(1, title, start_time, end_time, area)
-        self._log(f"Total pages available: {total_pages}, Processing max: {max_pages}")
+        self.browser = BrowserEngine(headless=False) # GUI 模式以便通过验证码
+        self.browser.logger = self.log_func # 传递日志函数
         
-        pages_to_crawl = min(total_pages, max_pages)
-        if pages_to_crawl == 0 and len(records) > 0:
-             # Case where total_pages might be 0 but data exists? 
-             # Usually pages >= 1 if records > 0
-             pages_to_crawl = 1
-        
-        # 降低并发：max_workers 从 5 降至 2
-        if records:
-            with ThreadPoolExecutor(max_workers=2) as executor:
-                futures = [executor.submit(self.process_item, rec) for rec in records]
-                for f in futures:
-                    res = f.result()
-                    if res: all_data.extend(res)
-        
-        # 处理后续页面
-        for p in range(2, pages_to_crawl + 1):
-            self._log(f"--- 准备翻阅第 {p} 页 ---")
-            # 页际长休眠：3.0 - 8.0 秒
-            time.sleep(random.uniform(3.0, 8.0))
+        try:
+            self.browser.init_driver()
             
-            records, total = self.get_list(p, title, start_time, end_time, area)
-            if total == -1: break # 触发熔断
+            # 1. 导航并搜索
+            self.browser.goto_search_page()
+            self.browser.perform_search(title, start_time, end_time, area)
             
-            if records:
-                with ThreadPoolExecutor(max_workers=2) as executor:
-                    futures = [executor.submit(self.process_item, rec) for rec in records]
-                    for f in futures:
-                        res = f.result()
-                        if res: all_data.extend(res)
+            # 2. 如果起始页不是1，跳转
+            if start_page > 1:
+                success = self.browser.jump_to_page(start_page)
+                if not success:
+                    self._log(f"跳转到第 {start_page} 页失败，将从当前页开始")
+            
+            # 3. 循环爬取
+            pages_crawled = 0
+            current_page_idx = start_page
+            
+            while pages_crawled < max_pages:
+                self._log(f"--- 正在处理第 {current_page_idx} 页 ---")
+                
+                # 提取列表
+                records = self.browser.extract_records()
+                if not records:
+                    self._log("当前页未提取到数据，可能是最后一页或加载失败")
+                    break
+                
+                # 详情页处理 (保持并发)
+                # 注意：BrowserEngine 已经提取了 ID，我们继续用 requests 并发获取详情
+                # 为了保持 session 状态 (Cookies)，我们可以尝试让 requests 使用 browser 的 cookies
+                # 但目前详情页 API 似乎不需要 cookie 或者不敏感？
+                # 如果需要，可以: s = requests.Session(); s.cookies.update(...)
+                
+                if records:
+                    with ThreadPoolExecutor(max_workers=2) as executor:
+                        futures = [executor.submit(self.process_item, rec) for rec in records]
+                        for f in futures:
+                            res = f.result()
+                            if res: all_data.extend(res)
+                
+                pages_crawled += 1
+                if pages_crawled >= max_pages:
+                    break
+                
+                # 翻页
+                if not self.browser.next_page():
+                    self._log("无法点击下一页，停止爬取")
+                    break
+                    
+                current_page_idx += 1
+                
+        except Exception as e:
+            self._log(f"爬虫运行异常: {e}")
+        finally:
+            if self.browser:
+                self.browser.close()
+                self.browser = None
             
         return all_data
 

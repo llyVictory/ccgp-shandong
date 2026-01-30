@@ -23,9 +23,10 @@ class CrawlRequest(BaseModel):
     area: str = "370000"
     startTime: str = ""
     endTime: str = ""
-    maxPages: int = 5
+    startPage: int = 1
+    maxPages: int = 1
     title: str = ""
-    useProxy: bool = True
+    useProxy: bool = False
 
 @app.get("/")
 async def read_index():
@@ -56,60 +57,71 @@ from contextlib import redirect_stdout
 
 def run_spider_task(task_id: str, req: CrawlRequest):
     # Setup custom logging inside the function
-    def task_log(msg):
+    def log_callback(msg):
         print(msg) # Still print to terminal
         if task_id in tasks:
             tasks[task_id]["logs"].append(msg)
-            # Keep only last 100 lines
-            if len(tasks[task_id]["logs"]) > 100:
+            # Keep log size manageable
+            if len(tasks[task_id]["logs"]) > 1000:
                 tasks[task_id]["logs"].pop(0)
 
     try:
         spider = Shandong(use_proxy=req.useProxy)
-        # Mocking print for the spider object just for this call
-        # Since the spider uses 'print', we capture it
-        f = io.StringIO()
-        with redirect_stdout(f):
-            # We'll poll f.getvalue() in a thread or just run and append
-            # For simplicity, we'll wrap the spider's print if we can, 
-            # but since spider is a class, we'll just redirect stdout globally for this thread
-            
-            # This is a bit tricky with multithreading but since uvicorn is async 
-            # and background_tasks run in threadpool, it might work if we are careful.
-            # A better way is to pass a logger to the spider.
-            
-            # Let's just update the spider class's print or use a different approach.
-            # I will modify shandong.py to accept a logger function.
-            pass
-        
-        # Re-doing the approach: modify Shandong to take a log_func
-        spider.log_func = task_log
+        spider.log_func = log_callback
         
         data = spider.run(
-            max_pages=req.maxPages,
-            title=req.title,
-            start_time=req.startTime,
-            end_time=req.endTime,
+            max_pages=req.maxPages, 
+            start_page=req.startPage,
+            title=req.title, 
+            start_time=req.startTime, 
+            end_time=req.endTime, 
             area=req.area
         )
         
         if data:
             df = pd.DataFrame(data)
-            cols = ["序号", "分类1", "分类2", "地市", "客户名称", "项目名称", "金额", "预计时间", "link"]
-            df['序号'] = range(1, len(df) + 1)
-            for c in cols:
-                if c not in df.columns:
-                    df[c] = ""
+            # Define new column order
+            cols = [
+                "序号", 
+                "地区", 
+                "标题", 
+                "采购方式", 
+                "项目类型", 
+                "发布时间",
+                "子序号",
+                "采购项目名称",
+                "采购需求概况",
+                "预算金额(万元)",
+                "拟面向中小企业预留",
+                "预计采购时间",
+                "备注",
+                "Link" 
+            ]
+            
+            # Ensure all columns exist
+            for col in cols:
+                if col not in df.columns:
+                    df[col] = ""
+            
+            # Reorder
             df = df[cols]
             
-            file_name = f"output_{task_id}.xlsx"
-            file_path = os.path.join("static", file_name)
-            df.to_excel(file_path, index=False)
-            tasks[task_id] = {"status": "completed", "file": file_path}
+            filename = f"shandong_data_{task_id}.xlsx"
+            filepath = os.path.join("static", filename)
+            df.to_excel(filepath, index=False)
+            
+            tasks[task_id]["status"] = "completed"
+            tasks[task_id]["file"] = filepath
+            spider._log(f"任务完成! 数据已保存到 {filepath}")
         else:
-            tasks[task_id] = {"status": "failed", "error": "No data found"}
+            tasks[task_id]["status"] = "completed"
+            spider._log("任务完成，但未抓取到任何数据。")
+            
     except Exception as e:
-        tasks[task_id] = {"status": "failed", "error": str(e)}
+        print(f"Task failed: {e}")
+        tasks[task_id]["status"] = "failed"
+        if task_id in tasks:
+            tasks[task_id]["logs"].append(f"Error: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn
