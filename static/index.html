@@ -355,6 +355,7 @@
             <label>快速时间范围</label>
             <select id="quickTime">
                 <option value="custom">自定义</option>
+                <option value="0">今日</option>
                 <option value="7">近7天</option>
                 <option value="30" selected>近30天</option>
                 <option value="180">近半年</option>
@@ -466,8 +467,18 @@
         }
 
         startBtn.onclick = async () => {
-            const startTime = document.getElementById('startTime').value;
-            const endTime = document.getElementById('endTime').value;
+            const quickTimeValue = document.getElementById('quickTime').value;
+            let startTime, endTime;
+
+            if (quickTimeValue === 'custom') {
+                // 自定义日期，传实际日期字符串
+                startTime = document.getElementById('startTime').value;
+                endTime = document.getElementById('endTime').value;
+            } else {
+                // 快捷选项，传快捷代码（后端会点击对应按钮）
+                startTime = quickTimeValue; // "0", "7", "30", "180", "365", "1095"
+                endTime = "";
+            }
 
             const payload = {
                 area: document.getElementById('area').value,

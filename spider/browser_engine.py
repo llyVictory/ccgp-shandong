@@ -131,7 +131,13 @@ class BrowserEngine:
             self._log("页面加载超时，可能网络慢或结构变更")
 
     def perform_search(self, title="", start_time="", end_time="", area="370000"):
-        self._log(f"执行搜索: 地区={area}, 标题={title}, 时间={start_time}~{end_time}")
+        # 把快捷代码转成可读文本用于日志显示
+        time_display_map = {
+            "0": "今日", "7": "近7天", "30": "近30天",
+            "180": "近半年", "365": "近一年", "1095": "近三年"
+        }
+        time_display = time_display_map.get(start_time, f"{start_time}~{end_time}")
+        self._log(f"执行搜索: 地区={area}, 标题={title}, 时间范围={time_display}")
         
         # 0. 切换到 '意向公开' Tab (用户强制要求)
         try:
@@ -204,30 +210,47 @@ class BrowserEngine:
             except Exception as e:
                 self._log(f"标题输入出错: {e}")
 
-        # 3. 时间输入
-        if start_time:
+        # 3. 时间范围选择 - 点击网站上的快捷按钮
+        # 映射关系: 我们的参数 -> 网站按钮文本
+        # start_time 现在传的是 quickTimeRange 值: "0"=今日, "7"=近7天, "30"=近30天, "180"=近半年, "365"=近一年, "1095"=近三年
+        time_range_map = {
+            "0": "今日",
+            "7": "近7天",
+            "30": "近30天",
+            "180": "近半年",
+            "365": "近一年",
+            "1095": "近三年"
+        }
+        
+        # 如果 start_time 是我们的快捷代码，点击对应按钮
+        quick_btn_text = time_range_map.get(start_time, None)
+        if quick_btn_text:
             try:
-                inputs = self.driver.find_elements(By.TAG_NAME, "input")
-                for inp in inputs:
-                    ph = inp.get_attribute("placeholder")
-                    if ph and "开始时间" in ph:
-                        inp.send_keys(start_time) # 也就是 YYYY-MM-DD
-                        # ElementUI 日期控件可能需要回车或点击确认，或者点一下空白处
-                        # 尝试 send keys 后点一下 body
-                        self.driver.find_element(By.TAG_NAME, "body").click()
-                        break
-            except: pass
-            
-        if end_time:
-            try:
-                inputs = self.driver.find_elements(By.TAG_NAME, "input")
-                for inp in inputs:
-                    ph = inp.get_attribute("placeholder")
-                    if ph and "结束时间" in ph:
-                        inp.send_keys(end_time)
-                        self.driver.find_element(By.TAG_NAME, "body").click()
-                        break
-            except: pass
+                self._log(f"尝试点击时间范围: {quick_btn_text}")
+                # 查找时间范围按钮列表 - 通过文本内容查找所有 div
+                all_divs = self.driver.find_elements(By.TAG_NAME, "div")
+                clicked = False
+                for div in all_divs:
+                    try:
+                        div_text = div.text.strip()
+                        div_class = div.get_attribute("class") or ""
+                        # 必须是 .item 类的 div，且文本完全匹配
+                        if "item" in div_class and div_text == quick_btn_text:
+                            if "is_active" not in div_class:
+                                div.click()
+                                self._log(f"点击了时间范围按钮: {quick_btn_text}")
+                                time.sleep(random.uniform(1, 2))
+                            else:
+                                self._log(f"时间范围按钮 '{quick_btn_text}' 已激活")
+                            clicked = True
+                            break
+                    except:
+                        continue
+                
+                if not clicked:
+                    self._log(f"未找到时间范围按钮: {quick_btn_text}")
+            except Exception as e:
+                self._log(f"时间范围选择出错: {e}")
 
         # 4. 点击查询 (可能触发验证码)
         # 查找按钮: span 文本为 "查询" 的按钮
