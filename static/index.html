@@ -22,23 +22,30 @@
             align-items: center;
             min-height: 100vh;
             margin: 0;
+            font-size: 1.1rem;
+            /* Overall font size increased */
         }
 
         .container {
             background: var(--card);
-            padding: 2.5rem;
+            padding: 3rem;
+            /* More padding */
             border-radius: 1.5rem;
             box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
-            width: 100%;
-            max-width: 900px;
+            width: 95%;
+            /* Use more available width */
+            max-width: 1100px;
+            /* Wider container */
             backdrop-filter: blur(10px);
             border: 1px solid rgba(255, 255, 255, 0.1);
+            margin: 2rem 0;
         }
 
         h1 {
             text-align: center;
-            margin-bottom: 2rem;
-            font-size: 1.75rem;
+            margin-bottom: 2.5rem;
+            font-size: 2.25rem;
+            /* Larger title */
             background: linear-gradient(to right, #818cf8, #c084fc);
             background-clip: text;
             -webkit-background-clip: text;
@@ -46,61 +53,246 @@
         }
 
         .form-group {
-            margin-bottom: 1.5rem;
+            margin-bottom: 2rem;
         }
 
         label {
             display: block;
-            margin-bottom: 0.5rem;
-            font-size: 0.875rem;
-            color: #94a3b8;
+            margin-bottom: 0.75rem;
+            font-size: 1rem;
+            /* Larger labels */
+            color: #cbd5e1;
+            font-weight: 500;
         }
 
         select,
         input {
             width: 100%;
-            padding: 0.75rem;
-            border-radius: 0.5rem;
+            padding: 1rem;
+            font-size: 1.1rem;
+            border-radius: 0.75rem;
             border: 1px solid #334155;
             background: #0f172a;
             color: white;
             box-sizing: border-box;
             outline: none;
-            transition: border-color 0.2s;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        select {
+            appearance: none;
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            cursor: pointer;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2394a3b8' stroke-width='2'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 1rem center;
+            background-size: 1.5rem;
+            padding-right: 3rem;
+        }
+
+        select:hover,
+        input:hover {
+            border-color: #475569;
+            background-color: #1e293b;
+        }
+
+        /* Hide arrows for Chrome, Safari, Edge, Opera */
+        input::-webkit-outer-spin-button,
+        input::-webkit-inner-spin-button {
+            -webkit-appearance: none;
+            appearance: none;
+            margin: 0;
+        }
+
+        /* Hide arrows for Firefox */
+        input[type=number] {
+            -moz-appearance: textfield;
+            appearance: textfield;
         }
 
         select:focus,
         input:focus {
             border-color: var(--primary);
+            background-color: #1e293b;
+            box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.2);
+        }
+
+        /* --- Custom Dropdown UI --- */
+        .custom-select-wrapper {
+            position: relative;
+            user-select: none;
+            width: 100%;
+            /* Explicitly set to 100% */
+        }
+
+        .select-trigger {
+            width: 100%;
+            padding: 1rem;
+            font-size: 1.1rem;
+            border-radius: 0.75rem;
+            border: 1px solid #334155;
+            background: #0f172a;
+            color: white;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+            transition: all 0.2s;
+            box-sizing: border-box;
+            /* Crucial for matching input width */
+        }
+
+        .select-trigger:hover {
+            border-color: #475569;
+            background-color: #1e293b;
+        }
+
+        .select-trigger::after {
+            content: "";
+            width: 1.25rem;
+            height: 1.25rem;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2394a3b8' stroke-width='2'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E");
+            background-size: contain;
+            background-repeat: no-repeat;
+            transition: transform 0.3s;
+        }
+
+        .custom-select-wrapper.open .select-trigger {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.2);
+        }
+
+        .custom-select-wrapper.open .select-trigger::after {
+            transform: rotate(180deg);
+        }
+
+        .custom-options {
+            position: absolute;
+            top: calc(100% + 0.5rem);
+            left: 0;
+            right: 0;
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 1rem;
+            box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.7);
+            z-index: 100;
+            opacity: 0;
+            visibility: hidden;
+            transform: translateY(-10px);
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            max-height: 400px;
+            overflow-y: auto;
+            padding: 0.5rem;
+        }
+
+        .custom-select-wrapper.open .custom-options {
+            opacity: 1;
+            visibility: visible;
+            transform: translateY(0);
+        }
+
+        .custom-option {
+            padding: 0.8rem 1rem;
+            border-radius: 0.6rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            color: #cbd5e1;
+            font-size: 1rem;
+            margin-bottom: 2px;
+        }
+
+        .custom-option:hover {
+            background: #334155;
+            color: white;
+            padding-left: 1.5rem;
+        }
+
+        .custom-option.selected {
+            background: var(--primary);
+            color: white;
+        }
+
+        /* Scrollbar for options */
+        .custom-options::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .custom-options::-webkit-scrollbar-thumb {
+            background: #475569;
+            border-radius: 10px;
+        }
+
+        /* Checkbox Beautification */
+        input[type="checkbox"] {
+            appearance: none;
+            -webkit-appearance: none;
+            width: 1.5rem;
+            height: 1.5rem;
+            border: 2px solid #334155;
+            border-radius: 0.4rem;
+            background-color: #0f172a;
+            cursor: pointer;
+            position: relative;
+            transition: all 0.2s;
+            margin: 0;
+            padding: 0;
+            display: inline-block;
+            vertical-align: middle;
+        }
+
+        input[type="checkbox"]:checked {
+            background-color: var(--primary);
+            border-color: var(--primary);
+        }
+
+        input[type="checkbox"]:checked::after {
+            content: "✓";
+            position: absolute;
+            color: white;
+            font-size: 1rem;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-weight: bold;
+        }
+
+        input[type="checkbox"]:hover {
+            border-color: var(--primary);
         }
 
         button {
             width: 100%;
-            padding: 0.75rem;
-            border-radius: 0.5rem;
+            padding: 1rem;
+            /* Taller button */
+            font-size: 1.2rem;
+            /* Larger button text */
+            border-radius: 0.75rem;
             border: none;
             background: var(--primary);
             color: white;
-            font-weight: 600;
+            font-weight: 700;
             cursor: pointer;
-            transition: transform 0.1s, opacity 0.2s;
-            margin-top: 1rem;
+            transition: transform 0.1s, opacity 0.2s, background-color 0.2s;
+            margin-top: 1.5rem;
         }
 
         button:hover {
-            opacity: 0.9;
+            opacity: 0.95;
+            background-color: #4f46e5;
         }
 
         button:active {
-            transform: scale(0.98);
+            transform: scale(0.99);
         }
 
         #status {
-            margin-top: 1.5rem;
+            margin-top: 2rem;
             text-align: center;
-            padding: 1rem;
-            border-radius: 0.5rem;
+            padding: 1.25rem;
+            border-radius: 0.75rem;
             display: none;
+            font-weight: 500;
         }
 
         .running {
@@ -121,7 +313,11 @@
         #downloadBtn {
             display: none;
             background: #22c55e;
-            margin-top: 1rem;
+            margin-top: 1.5rem;
+        }
+
+        #downloadBtn:hover {
+            background: #16a34a;
         }
     </style>
 </head>
@@ -186,9 +382,11 @@
                 <input type="number" id="maxPages" value="1" min="1">
             </div>
         </div>
-        <div class="form-group" style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
-            <input type="checkbox" id="useProxy" style="width: auto;">
-            <label for="useProxy" style="margin-bottom: 0; cursor: pointer;">启用 Clash 代理 (127.0.0.1:7897)</label>
+        <div class="form-group"
+            style="display: flex; align-items: center; gap: 0.75rem; margin-top: 2rem; background: rgba(255,255,255,0.03); padding: 1rem; border-radius: 0.75rem; border: 1px dashed #334155;">
+            <input type="checkbox" id="useProxy">
+            <label for="useProxy" style="margin-bottom: 0; cursor: pointer; color: #94a3b8; font-size: 0.95rem;">启用
+                Clash 代理 (127.0.0.1:7897)</label>
         </div>
         <button id="startBtn">开始爬取</button>
         <div id="status"></div>
@@ -215,7 +413,7 @@
         }
 
         #logContent {
-            height: 350px;
+            height: 450px;
             overflow-y: auto;
             font-family: 'Consolas', monospace;
             font-size: 0.75rem;
@@ -351,6 +549,78 @@
 
         // Initialize default date range
         updateDatesByQuickRange(30);
+
+        function initCustomSelects() {
+            const selects = document.querySelectorAll('select');
+            selects.forEach(select => {
+                if (select.style.display === 'none') return; // Avoid double init
+
+                const wrapper = document.createElement('div');
+                wrapper.className = 'custom-select-wrapper';
+
+                const trigger = document.createElement('div');
+                trigger.className = 'select-trigger';
+                trigger.innerText = select.options[select.selectedIndex].text;
+
+                const optionsContainer = document.createElement('div');
+                optionsContainer.className = 'custom-options';
+
+                Array.from(select.options).forEach((opt, idx) => {
+                    const customOpt = document.createElement('div');
+                    customOpt.className = 'custom-option';
+                    if (opt.selected) customOpt.classList.add('selected');
+                    customOpt.innerText = opt.text;
+                    customOpt.dataset.value = opt.value;
+
+                    customOpt.onclick = (e) => {
+                        e.stopPropagation();
+                        // Update native select
+                        select.value = opt.value;
+                        // Update UI
+                        trigger.innerText = opt.text;
+                        wrapper.querySelectorAll('.custom-option').forEach(o => o.classList.remove('selected'));
+                        customOpt.classList.add('selected');
+                        wrapper.classList.remove('open');
+
+                        // Trigger native onchange
+                        const event = new Event('change');
+                        select.dispatchEvent(event);
+
+                        // If it's the quickTime select, our onchange handler will run
+                    };
+                    optionsContainer.appendChild(customOpt);
+                });
+
+                trigger.onclick = (e) => {
+                    e.stopPropagation();
+                    // Close others
+                    document.querySelectorAll('.custom-select-wrapper').forEach(w => {
+                        if (w !== wrapper) w.classList.remove('open');
+                    });
+                    wrapper.classList.toggle('open');
+                };
+
+                wrapper.appendChild(trigger);
+                wrapper.appendChild(optionsContainer);
+
+                // Hide native, insert custom
+                select.style.display = 'none';
+                select.parentNode.insertBefore(wrapper, select.nextSibling);
+
+                // Keep the trigger updated if native select value is changed programmatically
+                // (e.g. if we had other scripts changing it)
+            });
+
+            document.addEventListener('click', () => {
+                document.querySelectorAll('.custom-select-wrapper').forEach(w => w.classList.remove('open'));
+            });
+        }
+
+        // Run hydration
+        initCustomSelects();
+
+        // One more thing: if we're using updateDatesByQuickRange(30), the selective trigger text
+        // for #quickTime should be correct. Since we run init after the first call, it's fine.
     </script>
 </body>
 
