@@ -61,7 +61,7 @@ class BrowserEngine:
             self.driver.quit()
             self.driver = None
 
-    def solve_captcha(self):
+    def solve_captcha(self, refresh_first=True):
         """
         检测并自动识别只有在出现验证码时才调用的逻辑
         """
@@ -86,13 +86,14 @@ class BrowserEngine:
                 img_el = captcha_imgs[0]
                 if img_el.is_displayed():
                     # 1. 点击刷新 (根据用户要求)
-                    try:
-                        refresh_btn = self.driver.find_element(By.CSS_SELECTOR, "div.n-captcha i.refresh-icon")
-                        refresh_btn.click()
-                        self._log("点击了验证码刷新按钮")
-                        time.sleep(random.uniform(2, 3)) # 等待新图片加载
-                    except Exception as e:
-                        self._log(f"刷新验证码失败: {e}")
+                    if refresh_first:
+                        try:
+                            refresh_btn = self.driver.find_element(By.CSS_SELECTOR, "div.n-captcha i.refresh-icon")
+                            refresh_btn.click()
+                            self._log("点击了验证码刷新按钮")
+                            time.sleep(random.uniform(1, 2)) # 等待新图片加载
+                        except Exception as e:
+                            self._log(f"刷新验证码失败: {e}")
 
                     src = img_el.get_attribute("src")
                     if src and "blob:" in src and len(src) > 10:
@@ -109,7 +110,7 @@ class BrowserEngine:
                         # 填入
                         input_box.clear()
                         input_box.send_keys(res)
-                        time.sleep(random.uniform(2, 3))
+                        time.sleep(random.uniform(1, 2))
                         return True
             return False
         except Exception as e:
@@ -151,7 +152,7 @@ class BrowserEngine:
                 if "is_active" not in class_attr:
                     target_li.click()
                     self._log("点击了 '意向公开' Tab")
-                    time.sleep(random.uniform(3, 5))
+                    time.sleep(random.uniform(1, 2))
                 else:
                     self._log("'意向公开' Tab 已经是激活状态")
             else:
@@ -170,12 +171,12 @@ class BrowserEngine:
                 if area == "370000":
                     if "is_active" not in tabs[0].get_attribute("class"):
                         tabs[0].click()
-                        time.sleep(random.uniform(2, 3))
+                        time.sleep(random.uniform(1, 2))
                 else:
                     # 市区县
                     if "is_active" not in tabs[1].get_attribute("class"):
                         tabs[1].click()
-                        time.sleep(random.uniform(2, 3))
+                        time.sleep(random.uniform(1, 2))
                     
                     # 还要点击具体的市
                     # 找到包含该地区名称的 item
@@ -238,10 +239,29 @@ class BrowserEngine:
                 self._log(f"执行查询 (尝试 {attempt + 1}/{max_retries})...")
                 
                 # a. 处理验证码
-                # 第一次不强求刷新？或者根据情况。目前 solve_captcha 内部是“如果发现图片就刷新”，
-                # 这稍微有点激进。但为了稳妥，我们每次重试都重新做一遍。
-                # 注意：solve_captcha 返回 True 表示填了，False 表示没填(可能没出现)
-                has_captcha = self.solve_captcha()
+                # 用户强调步骤：参数设置完 -> 点击刷新 -> 识别 -> 填入 -> 点击查询
+                # 我们显式触发刷新按钮点击，确保拿到最新验证码
+                try:
+                    refresh_btn = self.driver.find_element(By.CSS_SELECTOR, "div.n-captcha i.refresh-icon")
+                    refresh_btn.click()
+                    self._log("强制刷新验证码...")
+                    time.sleep(random.uniform(1, 2)) 
+                except:
+                    pass
+
+                has_captcha = self.solve_captcha(refresh_first=False) # 已经刷过了，传个参控制一下(需修改solve_captcha)
+                # 暂时 solve_captcha 内部还是会检测并刷新的逻辑，为了不破坏原有逻辑，
+                # 我们先保留 solve_captcha 的内部逻辑，但在它执行前我们已经点了一次刷新，
+                # solve_captcha 内部如果判断图片是 blob 且有效，可能不会点刷新？
+                # The implementation of solve_captcha clicks refresh if it finds the image.
+                # Let's rely on solve_captcha's own refresh logic but ensure we call it here.
+                # The user's log shows "点击了验证码刷新按钮", so it IS refreshing.
+                
+                # The user suspects the input is wrong. "7c59" - maybe letters vs numbers?
+                # or maybe the "check" happens too fast.
+                
+                # Let's stick to the plan: continue relying on solve_captcha but maybe add a small delay before it.
+
 
                 # b. 点击查询
                 buttons = self.driver.find_elements(By.TAG_NAME, "button")
@@ -254,7 +274,7 @@ class BrowserEngine:
                 if search_btn:
                     search_btn.click()
                     self._log("点击了查询按钮")
-                    time.sleep(random.uniform(3, 5))
+                    time.sleep(random.uniform(1, 2))
                     
                     # c. 检查是否出现“验证码错误”提示
                     # 检查页面 body 文本是否包含关键词，或者特定 element
@@ -262,7 +282,7 @@ class BrowserEngine:
                     page_source = self.driver.page_source
                     if "验证码错误" in page_source:
                          self._log("检测到 '验证码错误' 提示，准备重试...")
-                         time.sleep(random.uniform(3, 5))
+                         time.sleep(random.uniform(1, 2))
                          continue
                     
                     # d. 检查是否成功加载数据 (可选)
@@ -283,13 +303,34 @@ class BrowserEngine:
         """
         records = []
         try:
-            # 1. 精确查找有效数据行
-            # Element UI 有时会有多个 table (fixed header/column)，通常真实的在中间
-            # 这里我们尝试通过判断行是否可见来过滤
-            all_rows = self.driver.find_elements(By.CSS_SELECTOR, "table tbody tr")
+            # 1. 精确查找有效数据行（无需等待重试，找不到直接返回空，由上层rescue逻辑处理）
+            all_rows = self.driver.find_elements(By.CSS_SELECTOR, "table:not(.el-date-table) tbody tr")
+            
+            # 二次过滤：排除含有 el-date-table__row 类的行
+            all_rows = [r for r in all_rows if "el-date-table__row" not in (r.get_attribute("class") or "")]
             visible_rows = [r for r in all_rows if r.is_displayed()]
             
             self._log(f"当前页发现 {len(all_rows)} 行，其中可见行 {len(visible_rows)} 行")
+            
+            if len(all_rows) > 0 and len(visible_rows) == 0:
+                self._log("⚠️ 警告：检测到有数据行但判定为不可见，正在分析原因...")
+                for idx, r in enumerate(all_rows[:3]): # 只分析前3行
+                    try:
+                        className = r.get_attribute("class")
+                        style = r.get_attribute("style")
+                        innerText = r.get_attribute("innerText")
+                        self._log(f"Row {idx} Debug: Class='{className}', Style='{style}', Text='{innerText[:50]}...'")
+                        # 检查父级
+                        parent = r.find_element(By.XPATH, "./..") # tbody
+                        p_style = parent.get_attribute("style")
+                        p_class = parent.get_attribute("class")
+                        self._log(f"Parent (TBODY) Debug: Class='{p_class}', Style='{p_style}'")
+                    except Exception as e:
+                        self._log(f"分析行 {idx} 失败: {e}")
+                
+                # 尝试强制使用 all_rows，看看是否能死马当活马医
+                self._log("尝试强制处理所有行（忽略可见性检查）...")
+                visible_rows = all_rows
             
             # 保存主窗口句柄
             main_handle = self.driver.current_window_handle
@@ -330,7 +371,7 @@ class BrowserEngine:
                         click_target = cols[2] # 降级点击 td
                     
                     self.driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", click_target)
-                    time.sleep(random.uniform(1, 3))
+                    time.sleep(random.uniform(1, 2))
                     
                     # 记录点击前的状态
                     old_handles = self.driver.window_handles
@@ -343,7 +384,7 @@ class BrowserEngine:
                         self.driver.execute_script("arguments[0].click();", click_target)
                     
                     # 等待反应
-                    time.sleep(random.uniform(1, 3))
+                    time.sleep(random.uniform(1, 2))
                     
                     new_handles = self.driver.window_handles
                     new_url = self.driver.current_url
@@ -354,7 +395,7 @@ class BrowserEngine:
                         new_handle = [h for h in new_handles if h not in old_handles][0]
                         self.driver.switch_to.window(new_handle)
                         self._log("已打开详情页 Tab，模拟浏览停留...")
-                        time.sleep(random.uniform(3, 5))
+                        time.sleep(random.uniform(1, 2))
                         detail_url = self.driver.current_url
                         self.driver.close()
                         self.driver.switch_to.window(main_handle)
@@ -419,32 +460,98 @@ class BrowserEngine:
         return records
 
     def next_page(self):
-        """点击下一页"""
+        """点击下一页，并处理可能出现的验证码"""
         try:
             # li.btn-next/ button.btn-next
             next_btn = self.driver.find_element(By.CSS_SELECTOR, "button.btn-next")
+            btn_class = next_btn.get_attribute("class") or ""
+            btn_disabled = next_btn.get_attribute("disabled")
+            
+            self._log(f"下一页按钮状态: class='{btn_class}', disabled='{btn_disabled}', is_enabled={next_btn.is_enabled()}")
+            
             # Element UI disabled button has property or class
-            if next_btn.is_enabled() and "disabled" not in next_btn.get_attribute("class"):
+            if next_btn.is_enabled() and "disabled" not in btn_class:
                 next_btn.click()
-                time.sleep(random.uniform(3, 5)) # 等待加载
+                self._log("已点击下一页按钮")
+                time.sleep(random.uniform(2, 3)) # 等待加载
+                
+                # 翻页后可能需要验证码！检测并处理
+                has_captcha = self.solve_captcha(refresh_first=True)
+                if has_captcha:
+                    self._log("翻页后检测到验证码，已自动处理")
+                    # 点击查询按钮
+                    buttons = self.driver.find_elements(By.TAG_NAME, "button")
+                    for btn in buttons:
+                        if btn.text and "查询" in btn.text:
+                            btn.click()
+                            self._log("点击了查询按钮")
+                            time.sleep(random.uniform(1, 2))
+                            break
+                
                 return True
-        except:
+            else:
+                self._log(f"下一页按钮不可用 (disabled/class包含disabled)")
+                return False
+        except Exception as e:
+            self._log(f"翻页失败: {e}")
             return False
-        return False
+
+    def get_current_page(self):
+        """获取当前页码"""
+        try:
+            inp = self.driver.find_element(By.CSS_SELECTOR, ".el-pagination__editor input")
+            val = inp.get_attribute("value")
+            if val and val.isdigit():
+                return int(val)
+        except:
+            pass
+        return 1  # 默认返回1
 
     def jump_to_page(self, page_num):
         """跳转到指定页"""
         try:
             self._log(f"尝试跳转到第 {page_num} 页...")
+            from selenium.webdriver.common.keys import Keys
+            
             # 找到输入框: .el-pagination__editor input
             inp = self.driver.find_element(By.CSS_SELECTOR, ".el-pagination__editor input")
-            inp.clear()
+            
+            # 记录当前值
+            old_val = inp.get_attribute("value")
+            self._log(f"跳转前输入框值: '{old_val}'")
+            
+            # 彻底清空：先全选再删除
+            inp.click()
+            inp.send_keys(Keys.CONTROL + "a")
+            inp.send_keys(Keys.DELETE)
+            time.sleep(random.uniform(0.5, 1.5))
+            
+            # 输入目标页码
             inp.send_keys(str(page_num))
-            time.sleep(random.uniform(2, 3))
-            # 回车 or blur? Element UI usually triggers on Enter or Blur.
-            from selenium.webdriver.common.keys import Keys
+            time.sleep(random.uniform(0.5, 1.5))
+            
+            # 回车触发跳转
             inp.send_keys(Keys.ENTER)
-            time.sleep(random.uniform(3, 5))
+            self._log(f"已输入页码 {page_num} 并按下回车")
+            time.sleep(random.uniform(2, 3))
+            
+            # 验证跳转结果
+            new_val = inp.get_attribute("value")
+            self._log(f"跳转后输入框值: '{new_val}'")
+            
+            # 跳转后也可能需要验证码
+            has_captcha = self.solve_captcha(refresh_first=True)
+            if has_captcha:
+                self._log("跳转页面后检测到验证码，已自动处理")
+                # 点击查询按钮
+                buttons = self.driver.find_elements(By.TAG_NAME, "button")
+                for btn in buttons:
+                    if btn.text and "查询" in btn.text:
+                        btn.click()
+                        self._log("点击了查询按钮")
+                        time.sleep(random.uniform(2, 3))
+                        break
+            
             return True
         except Exception as e:
             self._log(f"页面跳转失败: {e}")

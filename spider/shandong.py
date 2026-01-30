@@ -366,11 +366,39 @@ class Shandong(object):
             while pages_crawled < max_pages:
                 self._log(f"--- 正在处理第 {current_page_idx} 页 ---")
                 
-                # 提取列表
+                # 提取列表 (无限重试机制：空白数据一定是验证码问题)
                 records = self.browser.extract_records()
+                
+                rescue_attempts = 0
+                max_rescue_attempts = 10  # 最多重试10次，防止死循环
+                
+                while not records and rescue_attempts < max_rescue_attempts:
+                    rescue_attempts += 1
+                    self._log(f"第 {current_page_idx} 页未检测到数据，执行验证码重试 (第 {rescue_attempts} 次)...")
+                    
+                    # 重新执行全量搜索逻辑 (Tab -> 参数 -> 刷新验证码 -> 识别 -> 查询)
+                    self.browser.perform_search(title, start_time, end_time, area)
+                    
+                    # 检查当前页码，只有不在目标页时才跳转
+                    current_page_in_browser = self.browser.get_current_page()
+                    if current_page_in_browser != current_page_idx:
+                        self._log(f"当前页码 {current_page_in_browser}，需要跳转到第 {current_page_idx} 页...")
+                        self.browser.jump_to_page(current_page_idx)
+                    else:
+                        self._log(f"当前已在第 {current_page_idx} 页，无需跳转")
+                    
+                    # 再次尝试提取
+                    records = self.browser.extract_records()
+                
                 if not records:
-                    self._log("当前页未提取到数据，可能是最后一页或加载失败")
-                    break
+                    self._log(f"已重试 {max_rescue_attempts} 次仍无数据，跳过此页继续下一页")
+                    # 不break，继续尝试下一页
+                    pages_crawled += 1
+                    current_page_idx += 1
+                    if not self.browser.next_page():
+                        self._log("无法点击下一页，停止爬取")
+                        break
+                    continue
                 
                 # 详情页处理 (保持并发)
                 # 注意：BrowserEngine 已经提取了 ID，我们继续用 requests 并发获取详情
@@ -400,8 +428,9 @@ class Shandong(object):
             self._log(f"爬虫运行异常: {e}")
         finally:
             if self.browser:
-                self.browser.close()
-                self.browser = None
+                self._log("Debug模式：不自动关闭浏览器，请手动关闭。")
+                # self.browser.close()
+                # self.browser = None
             
         return all_data
 
