@@ -55,6 +55,15 @@ class BrowserEngine:
         })
         self.driver.implicitly_wait(5)
         self._log("浏览器启动成功")
+        
+        # 网络连接测试
+        try:
+            self.driver.set_page_load_timeout(15)
+            self.driver.get("https://www.baidu.com")
+            self._log("网络连接正常")
+        except Exception as net_err:
+            self._log(f"⚠️ 网络连接测试失败: {net_err}")
+            self._log("请检查: 1. 网络是否连接 2. 代理是否开启 3. 防火墙设置")
 
     def close(self):
         if self.driver:
@@ -137,61 +146,78 @@ class BrowserEngine:
             "180": "近半年", "365": "近一年", "1095": "近三年"
         }
         time_display = time_display_map.get(start_time, f"{start_time}~{end_time}")
-        self._log(f"执行搜索: 地区={area}, 标题={title}, 时间范围={time_display}")
+        # self._log(f"执行搜索: 地区={area}, 标题={title}, 时间范围={time_display}")
         
-        # 0. 切换到 '意向公开' Tab (用户强制要求)
+        # 0. 切换到 '意向公开' Tab (左侧菜单第一项)
         try:
             self._log("尝试切换到 '意向公开' Tab...")
-            # 这里的 selector 是根据用户提供的 HTML 片段推断
-            # <li data-v-6fa4cba9="" class="is_active">意向公开</li>
-            # 为了稳健，我们通过文本内容查找
-            all_lis = self.driver.find_elements(By.TAG_NAME, "li")
-            target_li = None
-            for li in all_lis:
-                if "意向公开" in li.text.strip():
-                    target_li = li
-                    break
+            # 使用用户提供的精确 XPath
+            tab_xpath = "/html/body/div[1]/div[1]/div/div/div[1]/div/ul/li[1]"
+            tab_el = self.driver.find_element(By.XPATH, tab_xpath)
             
-            if target_li:
-                # 检查是否激活
-                class_attr = target_li.get_attribute("class") or ""
-                if "is_active" not in class_attr:
-                    target_li.click()
-                    self._log("点击了 '意向公开' Tab")
-                    time.sleep(random.uniform(1, 2))
-                else:
-                    self._log("'意向公开' Tab 已经是激活状态")
+            # 检查是否已激活
+            class_attr = tab_el.get_attribute("class") or ""
+            if "is_active" not in class_attr:
+                tab_el.click()
+                self._log("点击了 '意向公开' Tab")
+                time.sleep(random.uniform(1, 2))
             else:
-                self._log("警告：未找到 '意向公开' Tab，可能页面结构已变更")
-                
+                self._log("'意向公开' Tab 已经是激活状态")
         except Exception as e:
             self._log(f"切换 Tab 失败: {e}")
 
         
-        # 1. 地区选择
-        # 默认是“省级” (370000)，如果要选市区县，需要点击 Tab
-        # div.second-n-radio > div (两个，第一个省级，第二个市区县)
+        # 1. 地区选择 - 使用精确的 XPath
+        # 山东省本级 = 370000
+        # 其他市需要先点击"市区县"tab，再点击具体城市
         try:
-            tabs = self.driver.find_elements(By.CSS_SELECTOR, "div.second-n-radio > div")
-            if len(tabs) >= 2:
-                if area == "370000":
-                    if "is_active" not in tabs[0].get_attribute("class"):
-                        tabs[0].click()
-                        time.sleep(random.uniform(1, 2))
-                else:
-                    # 市区县
-                    if "is_active" not in tabs[1].get_attribute("class"):
-                        tabs[1].click()
-                        time.sleep(random.uniform(1, 2))
-                    
-                    # 还要点击具体的市
-                    # 找到包含该地区名称的 item
-                    # 比如 area="370100" -> 济南市
-                    # 需要一个映射表，或者简单遍历文本
-                    # 这里简化处理：如果是 370000 以外，暂只支持“市区县”大类，或者需要更复杂的点击
-                    # 考虑到用户之前的 select 有 value -> text 映射
-                    # 这里先略过具体城市的点击，以免复杂化，默认搜全省市区县
-                    pass
+            # 城市代码到 XPath index 的映射 (基于用户提供的 XPath)
+            city_xpath_index = {
+                "370100": 2,   # 济南市
+                "370200": 3,   # 青岛市
+                "370300": 4,   # 淄博市
+                "370400": 5,   # 枣庄市
+                "370500": 6,   # 东营市
+                "370600": 7,   # 烟台市
+                "370700": 8,   # 潍坊市
+                "370800": 9,   # 济宁市
+                "370900": 10,  # 泰安市
+                "371000": 11,  # 威海市
+                "371100": 12,  # 日照市
+                "371200": 13,  # 莱芜市
+                "371300": 14,  # 临沂市
+                "371400": 15,  # 德州市
+                "371500": 16,  # 聊城市
+                "371600": 17,  # 滨州市
+                "371700": 18,  # 菏泽市
+            }
+            
+            if area == "370000":
+                # 山东省本级 - 直接点击
+                xpath = "/html/body/div[1]/div[1]/div/div/div[2]/div/div[2]/div[1]/div[1]/div[1]"
+                el = self.driver.find_element(By.XPATH, xpath)
+                if "is_active" not in (el.get_attribute("class") or ""):
+                    el.click()
+                    self._log("选择了: 山东省本级")
+                    time.sleep(random.uniform(1, 2))
+            elif area in city_xpath_index:
+                # 先点击"市区县"tab
+                tab_xpath = "/html/body/div[1]/div[1]/div/div/div[2]/div/div[2]/div[1]/div[1]/div[2]"
+                tab_el = self.driver.find_element(By.XPATH, tab_xpath)
+                if "is_active" not in (tab_el.get_attribute("class") or ""):
+                    tab_el.click()
+                    self._log("点击了: 市区县 Tab")
+                    time.sleep(random.uniform(1, 2))
+                
+                # 再点击具体城市
+                idx = city_xpath_index[area]
+                city_xpath = f"/html/body/div[1]/div[1]/div/div/div[2]/div/div[2]/div[1]/div[2]/div[1]/div[3]/div[2]/div[{idx}]"
+                city_el = self.driver.find_element(By.XPATH, city_xpath)
+                city_el.click()
+                self._log(f"选择了城市: {city_el.text.strip()}")
+                time.sleep(random.uniform(1, 2))
+            else:
+                self._log(f"未知的地区代码: {area}，跳过地区选择")
         except Exception as e:
             self._log(f"地区选择出错: {e}")
 
