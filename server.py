@@ -162,8 +162,14 @@ def run_scheduled_spider():
     # 确保下载目录存在
     os.makedirs(download_path, exist_ok=True)
     
+    # 定义日志回调函数
+    def log_callback(msg):
+        print(f"[定时任务] {msg}")
+    
     # 执行爬取（今日数据，100页）
     spider = Shandong(use_proxy=False)
+    spider.log_func = log_callback  # 设置日志回调
+    
     data = spider.run(
         max_pages=100,
         start_page=1,
