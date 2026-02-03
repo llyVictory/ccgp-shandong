@@ -408,8 +408,8 @@ class BrowserEngine:
                     
                     area_name = cols[1].text.strip()
                     title = cols[2].text.strip()
-                    buy_mode = cols[3].text.strip()
-                    prj_type = cols[4].text.strip()
+                    # buy_mode = cols[3].text.strip()  # 官方数据为空，已注释
+                    # prj_type = cols[4].text.strip()  # 官方数据为空，已注释
                     pub_date = cols[5].text.strip()
                     
                     # 点击标题
@@ -503,8 +503,8 @@ class BrowserEngine:
                                 "oldData": old_data,
                                 "title": title,
                                 "areaName": area_name,
-                                "buyKindCode": buy_mode, 
-                                "projectType": prj_type,
+                                # "buyKindCode": buy_mode,  # 已注释
+                                # "projectType": prj_type,  # 已注释
                                 "date": pub_date,
                                 "url": detail_url,
                                 "publisher": publisher  # 发布人

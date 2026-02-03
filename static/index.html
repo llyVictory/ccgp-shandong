@@ -373,23 +373,48 @@
                 <input type="date" id="endTime">
             </div>
         </div>
-        <div class="form-group" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
-            <div>
-                <label>起始页码</label>
-                <input type="number" id="startPage" value="1" min="1">
+
+        <!-- 定时任务配置 -->
+        <div
+            style="margin-top: 2rem; padding: 1.5rem; background: rgba(59, 130, 246, 0.05); border: 1px solid rgba(59, 130, 246, 0.2); border-radius: 0.75rem;">
+            <h3 style="margin: 0 0 1rem 0; color: #60a5fa; font-size: 1.1rem;">⏰ 定时任务配置</h3>
+            <div class="form-group" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                <div>
+                    <label>执行时间（时）</label>
+                    <input type="number" id="scheduleHour" value="0" min="0" max="23" placeholder="0-23">
+                </div>
+                <div>
+                    <label>执行时间（分）</label>
+                    <input type="number" id="scheduleMinute" value="0" min="0" max="59" placeholder="0-59">
+                </div>
             </div>
-            <div>
-                <label>爬取页数 (每页10条)</label>
-                <input type="number" id="maxPages" value="1" min="1">
+            <div class="form-group">
+                <label>下载保存路径</label>
+                <input type="text" id="downloadPath" value="D:\spider_downloads" placeholder="例如: D:\spider_downloads">
+            </div>
+            <div style="color: #94a3b8; font-size: 0.85rem; margin-top: 0.5rem;">
+                💡 定时任务将每天固定时间执行，爬取"今日"数据（最多100页），并自动保存到指定路径
             </div>
         </div>
-        <div class="form-group"
-            style="display: flex; align-items: center; gap: 0.75rem; margin-top: 2rem; background: rgba(255,255,255,0.03); padding: 1rem; border-radius: 0.75rem; border: 1px dashed #334155;">
-            <input type="checkbox" id="useProxy">
-            <label for="useProxy" style="margin-bottom: 0; cursor: pointer; color: #94a3b8; font-size: 0.95rem;">启用
-                Clash 代理 (127.0.0.1:7897)</label>
+
+        <!-- 当前定时任务状态 -->
+        <div id="scheduleStatus"
+            style="display: none; margin-top: 1rem; padding: 1rem; background: rgba(34, 197, 94, 0.1); border: 1px solid rgba(34, 197, 94, 0.3); border-radius: 0.75rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                    <div style="color: #4ade80; font-weight: 600; margin-bottom: 0.25rem;">✓ 定时任务已启用</div>
+                    <div id="scheduleInfo" style="color: #94a3b8; font-size: 0.9rem;"></div>
+                </div>
+                <button id="deleteScheduleBtn"
+                    style="padding: 0.5rem 1rem; background: #ef4444; border: none; color: white; border-radius: 0.5rem; cursor: pointer;">删除任务</button>
+            </div>
         </div>
-        <button id="startBtn">开始爬取</button>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 1.5rem;">
+            <button id="createScheduleBtn">创建定时任务</button>
+            <button id="startBtn" style="background: linear-gradient(135deg, #64748b 0%, #475569 100%);">立即执行一次</button>
+        </div>
+
         <div id="status"></div>
         <div id="logConsole">
             <div
@@ -440,6 +465,8 @@
     <script>
         let currentTaskId = null;
         const startBtn = document.getElementById('startBtn');
+        const createScheduleBtn = document.getElementById('createScheduleBtn');
+        const deleteScheduleBtn = document.getElementById('deleteScheduleBtn');
         const downloadBtn = document.getElementById('downloadBtn');
         const statusDiv = document.getElementById('status');
         const quickTime = document.getElementById('quickTime');
@@ -447,6 +474,29 @@
         const logConsole = document.getElementById('logConsole');
         const logContent = document.getElementById('logContent');
         const logCount = document.getElementById('logCount');
+
+        // 页面加载时检查定时任务状态
+        async function loadScheduleStatus() {
+            try {
+                const resp = await fetch('/api/schedule/status');
+                const data = await resp.json();
+
+                if (data.hasTask && data.config) {
+                    document.getElementById('scheduleStatus').style.display = 'block';
+                    document.getElementById('scheduleInfo').innerText =
+                        `每天 ${String(data.config.hour).padStart(2, '0')}:${String(data.config.minute).padStart(2, '0')} 执行 | 保存至: ${data.config.downloadPath}`;
+                    document.getElementById('scheduleHour').value = data.config.hour;
+                    document.getElementById('scheduleMinute').value = data.config.minute;
+                    document.getElementById('downloadPath').value = data.config.downloadPath;
+                } else {
+                    document.getElementById('scheduleStatus').style.display = 'none';
+                }
+            } catch (e) {
+                console.error('加载定时任务状态失败:', e);
+            }
+        }
+
+        loadScheduleStatus(); // 初始化时加载
 
         quickTime.onchange = () => {
             if (quickTime.value === 'custom') {
@@ -553,6 +603,56 @@
                 console.error(e);
             }
         }
+
+        // 创建定时任务
+        createScheduleBtn.onclick = async () => {
+            const hour = parseInt(document.getElementById('scheduleHour').value);
+            const minute = parseInt(document.getElementById('scheduleMinute').value);
+            const downloadPath = document.getElementById('downloadPath').value.trim();
+            const area = document.getElementById('area').value;
+
+            if (!downloadPath) {
+                alert('请输入下载保存路径');
+                return;
+            }
+
+            try {
+                const resp = await fetch('/api/schedule/create', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ area, hour, minute, downloadPath })
+                });
+                const data = await resp.json();
+
+                if (data.success) {
+                    alert('✅ ' + data.message);
+                    loadScheduleStatus(); // 刷新状态
+                } else {
+                    alert('❌ 创建失败');
+                }
+            } catch (e) {
+                alert('❌ 创建定时任务失败: ' + e);
+            }
+        };
+
+        // 删除定时任务
+        deleteScheduleBtn.onclick = async () => {
+            if (!confirm('确定要删除定时任务吗？')) return;
+
+            try {
+                const resp = await fetch('/api/schedule/delete', { method: 'DELETE' });
+                const data = await resp.json();
+
+                if (data.success) {
+                    alert('✅ ' + data.message);
+                    loadScheduleStatus(); // 刷新状态
+                } else {
+                    alert('❌ 删除失败');
+                }
+            } catch (e) {
+                alert('❌ 删除定时任务失败: ' + e);
+            }
+        };
 
         downloadBtn.onclick = () => {
             window.location.href = '/api/download/' + currentTaskId;

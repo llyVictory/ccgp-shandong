@@ -311,8 +311,8 @@ class Shandong(object):
             "地区": record.get("areaName", ""),
             "标题": record.get("title", ""),
             "发布人": record.get("publisher", ""),  # 从详情页提取的发布人
-            "采购方式": record.get("buyKindCode", ""), # 若API未返回则由外部填充
-            "项目类型": record.get("projectType", ""),
+            # "采购方式": record.get("buyKindCode", ""),  # 官方数据为空，已注释
+            # "项目类型": record.get("projectType", ""),  # 官方数据为空，已注释
             "发布时间": record.get("date", ""),
             "Link": full_link
         }
