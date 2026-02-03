@@ -438,6 +438,7 @@ class BrowserEngine:
                     new_handles = self.driver.window_handles
                     new_url = self.driver.current_url
                     detail_url = ""
+                    publisher = ""  # 初始化发布人
                     
                     if len(new_handles) > len(old_handles):
                         # 新标签页打开了
@@ -446,6 +447,21 @@ class BrowserEngine:
                         self._log("已打开详情页 Tab，模拟浏览停留...")
                         time.sleep(random.uniform(1, 2))
                         detail_url = self.driver.current_url
+                        
+                        # 提取发布人
+                        publisher = ""
+                        try:
+                            publisher_xpath = "/html/body/div/div[1]/div/div/div[1]/div[2]/span[2]"
+                            publisher_el = self.driver.find_element(By.XPATH, publisher_xpath)
+                            publisher_raw = publisher_el.text.strip()
+                            # 去掉"发布人："前缀
+                            if "发布人：" in publisher_raw:
+                                publisher = publisher_raw.replace("发布人：", "").strip()
+                            else:
+                                publisher = publisher_raw
+                        except Exception as e:
+                            self._log(f"提取发布人失败: {e}")
+                        
                         self.driver.close()
                         self.driver.switch_to.window(main_handle)
                     elif new_url != old_url:
@@ -490,7 +506,8 @@ class BrowserEngine:
                                 "buyKindCode": buy_mode, 
                                 "projectType": prj_type,
                                 "date": pub_date,
-                                "url": detail_url
+                                "url": detail_url,
+                                "publisher": publisher  # 发布人
                             }
                             records.append(rec)
                             self._log(f"成功提取: {title}")

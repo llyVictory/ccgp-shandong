@@ -84,7 +84,8 @@ def run_spider_task(task_id: str, req: CrawlRequest):
             cols = [
                 "序号", 
                 "地区", 
-                "标题", 
+                "标题",
+                "发布人",  # 新增发布人列
                 "采购方式", 
                 "项目类型", 
                 "发布时间",
