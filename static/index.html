@@ -371,8 +371,12 @@
             </div>
             <div
                 style="padding: 0.75rem; background: rgba(59, 130, 246, 0.1); border-left: 3px solid #3b82f6; border-radius: 0.5rem; margin-bottom: 1rem;">
-                <div style="color: #60a5fa; font-size: 0.9rem; font-weight: 500;">📅 爬取范围：今日数据</div>
+                <div style="color: #60a5fa; font-size: 0.9rem; font-weight: 500;">📅 爬取范围：今日数据（最多100页）</div>
             </div>
+
+            <!-- 隐藏的爬取页数配置（固定值） -->
+            <input type="hidden" id="startPage" value="1">
+            <input type="hidden" id="maxPages" value="100">
 
             <!-- 定时任务配置 -->
             <div
