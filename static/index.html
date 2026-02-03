@@ -352,387 +352,389 @@
             </select>
         </div>
         <div class="form-group">
-            <label>快速时间范围</label>
-            <select id="quickTime">
-                <option value="custom">自定义</option>
-                <option value="0">今日</option>
-                <option value="7">近7天</option>
-                <option value="30" selected>近30天</option>
-                <option value="180">近半年</option>
-                <option value="365">近一年</option>
-                <option value="1095">近三年</option>
-            </select>
-        </div>
-        <div id="customTimeRange" style="display: none; gap: 1rem; grid-template-columns: 1fr 1fr;">
-            <div class="form-group">
-                <label>开始日期</label>
-                <input type="date" id="startTime">
+            <!-- 时间范围固定为"今日" -->
+            <div class="form-group" style="display: none;">
+                <label>快速时间范围</label>
+                <select id="quickTime">
+                    <option value="0" selected>今日</option>
+                </select>
             </div>
-            <div class="form-group">
-                <label>结束日期</label>
-                <input type="date" id="endTime">
-            </div>
-        </div>
-
-        <!-- 定时任务配置 -->
-        <div
-            style="margin-top: 2rem; padding: 1.5rem; background: rgba(59, 130, 246, 0.05); border: 1px solid rgba(59, 130, 246, 0.2); border-radius: 0.75rem;">
-            <h3 style="margin: 0 0 1rem 0; color: #60a5fa; font-size: 1.1rem;">⏰ 定时任务配置</h3>
-            <div class="form-group" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
-                <div>
-                    <label>执行时间（时）</label>
-                    <input type="number" id="scheduleHour" value="8" min="0" max="23" placeholder="0-23">
+            <div id="customTimeRange" style="display: none; gap: 1rem; grid-template-columns: 1fr 1fr;">
+                <div class="form-group">
+                    <label>开始日期</label>
+                    <input type="date" id="startTime">
                 </div>
-                <div>
-                    <label>执行时间（分）</label>
-                    <input type="number" id="scheduleMinute" value="30" min="0" max="59" placeholder="0-59">
+                <div class="form-group">
+                    <label>结束日期</label>
+                    <input type="date" id="endTime">
                 </div>
             </div>
-            <div class="form-group">
-                <label>下载保存路径</label>
-                <input type="text" id="downloadPath" value="D:\spider_downloads" placeholder="例如: D:\spider_downloads">
-            </div>
-            <div style="color: #94a3b8; font-size: 0.85rem; margin-top: 0.5rem;">
-                💡 定时任务将每天固定时间执行，爬取"今日"数据（最多100页），并自动保存到指定路径
-            </div>
-        </div>
-
-        <!-- 当前定时任务状态 -->
-        <div id="scheduleStatus"
-            style="display: none; margin-top: 1rem; padding: 1rem; background: rgba(34, 197, 94, 0.1); border: 1px solid rgba(34, 197, 94, 0.3); border-radius: 0.75rem;">
-            <div style="display: flex; justify-content: space-between; align-items: center;">
-                <div>
-                    <div style="color: #4ade80; font-weight: 600; margin-bottom: 0.25rem;">✓ 定时任务已启用</div>
-                    <div id="scheduleInfo" style="color: #94a3b8; font-size: 0.9rem;"></div>
-                </div>
-                <button id="deleteScheduleBtn"
-                    style="padding: 0.5rem 1rem; background: #ef4444; border: none; color: white; border-radius: 0.5rem; cursor: pointer;">删除任务</button>
-            </div>
-        </div>
-
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 1.5rem;">
-            <button id="createScheduleBtn">创建定时任务</button>
-            <button id="startBtn" style="background: linear-gradient(135deg, #64748b 0%, #475569 100%);">立即执行一次</button>
-        </div>
-
-        <div id="status"></div>
-        <div id="logConsole">
             <div
-                style="font-size: 0.75rem; color: #64748b; margin-bottom: 0.5rem; display: flex; justify-content: space-between;">
-                <span>实时日志</span>
-                <span id="logCount">0 lines</span>
+                style="padding: 0.75rem; background: rgba(59, 130, 246, 0.1); border-left: 3px solid #3b82f6; border-radius: 0.5rem; margin-bottom: 1rem;">
+                <div style="color: #60a5fa; font-size: 0.9rem; font-weight: 500;">📅 爬取范围：今日数据</div>
             </div>
-            <div id="logContent"></div>
+
+            <!-- 定时任务配置 -->
+            <div
+                style="margin-top: 2rem; padding: 1.5rem; background: rgba(59, 130, 246, 0.05); border: 1px solid rgba(59, 130, 246, 0.2); border-radius: 0.75rem;">
+                <h3 style="margin: 0 0 1rem 0; color: #60a5fa; font-size: 1.1rem;">⏰ 定时任务配置</h3>
+                <div class="form-group" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                    <div>
+                        <label>执行时间（时）</label>
+                        <input type="number" id="scheduleHour" value="8" min="0" max="23" placeholder="0-23">
+                    </div>
+                    <div>
+                        <label>执行时间（分）</label>
+                        <input type="number" id="scheduleMinute" value="30" min="0" max="59" placeholder="0-59">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>下载保存路径</label>
+                    <input type="text" id="downloadPath" value="D:\spider_downloads"
+                        placeholder="例如: D:\spider_downloads">
+                </div>
+                <div style="color: #94a3b8; font-size: 0.85rem; margin-top: 0.5rem;">
+                    💡 定时任务将每天固定时间执行，爬取"今日"数据（最多100页），并自动保存到指定路径
+                </div>
+            </div>
+
+            <!-- 当前定时任务状态 -->
+            <div id="scheduleStatus"
+                style="display: none; margin-top: 1rem; padding: 1rem; background: rgba(34, 197, 94, 0.1); border: 1px solid rgba(34, 197, 94, 0.3); border-radius: 0.75rem;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <div style="color: #4ade80; font-weight: 600; margin-bottom: 0.25rem;">✓ 定时任务已启用</div>
+                        <div id="scheduleInfo" style="color: #94a3b8; font-size: 0.9rem;"></div>
+                    </div>
+                    <button id="deleteScheduleBtn"
+                        style="padding: 0.5rem 1rem; background: #ef4444; border: none; color: white; border-radius: 0.5rem; cursor: pointer;">删除任务</button>
+                </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 1.5rem;">
+                <button id="createScheduleBtn">创建定时任务</button>
+                <button id="startBtn"
+                    style="background: linear-gradient(135deg, #64748b 0%, #475569 100%);">立即执行一次</button>
+            </div>
+
+            <div id="status"></div>
+            <div id="logConsole">
+                <div
+                    style="font-size: 0.75rem; color: #64748b; margin-bottom: 0.5rem; display: flex; justify-content: space-between;">
+                    <span>实时日志</span>
+                    <span id="logCount">0 lines</span>
+                </div>
+                <div id="logContent"></div>
+            </div>
+            <button id="downloadBtn">下载结果 (Excel)</button>
         </div>
-        <button id="downloadBtn">下载结果 (Excel)</button>
-    </div>
 
-    <style>
-        /* New styles for log console */
-        #logConsole {
-            margin-top: 1.5rem;
-            background: #020617;
-            border-radius: 0.5rem;
-            padding: 0.75rem;
-            border: 1px solid #1e293b;
-            display: none;
-        }
+        <style>
+            /* New styles for log console */
+            #logConsole {
+                margin-top: 1.5rem;
+                background: #020617;
+                border-radius: 0.5rem;
+                padding: 0.75rem;
+                border: 1px solid #1e293b;
+                display: none;
+            }
 
-        #logContent {
-            height: 450px;
-            overflow-y: auto;
-            font-family: 'Consolas', monospace;
-            font-size: 0.75rem;
-            line-height: 1.4;
-            color: #94a3b8;
-            word-break: break-all;
-            padding: 0.5rem;
-        }
+            #logContent {
+                height: 450px;
+                overflow-y: auto;
+                font-family: 'Consolas', monospace;
+                font-size: 0.75rem;
+                line-height: 1.4;
+                color: #94a3b8;
+                word-break: break-all;
+                padding: 0.5rem;
+            }
 
-        .log-entry {
-            margin-bottom: 0.25rem;
-            border-bottom: 1px solid #1e293b;
-            padding-bottom: 0.25rem;
-        }
+            .log-entry {
+                margin-bottom: 0.25rem;
+                border-bottom: 1px solid #1e293b;
+                padding-bottom: 0.25rem;
+            }
 
-        .log-url {
-            color: #38bdf8;
-            text-decoration: underline;
-            cursor: pointer;
-        }
-    </style>
+            .log-url {
+                color: #38bdf8;
+                text-decoration: underline;
+                cursor: pointer;
+            }
+        </style>
 
-    <script>
-        let currentTaskId = null;
-        const startBtn = document.getElementById('startBtn');
-        const createScheduleBtn = document.getElementById('createScheduleBtn');
-        const deleteScheduleBtn = document.getElementById('deleteScheduleBtn');
-        const downloadBtn = document.getElementById('downloadBtn');
-        const statusDiv = document.getElementById('status');
-        const quickTime = document.getElementById('quickTime');
-        const customTimeRange = document.getElementById('customTimeRange');
-        const logConsole = document.getElementById('logConsole');
-        const logContent = document.getElementById('logContent');
-        const logCount = document.getElementById('logCount');
+        <script>
+            let currentTaskId = null;
+            const startBtn = document.getElementById('startBtn');
+            const createScheduleBtn = document.getElementById('createScheduleBtn');
+            const deleteScheduleBtn = document.getElementById('deleteScheduleBtn');
+            const downloadBtn = document.getElementById('downloadBtn');
+            const statusDiv = document.getElementById('status');
+            const quickTime = document.getElementById('quickTime');
+            const customTimeRange = document.getElementById('customTimeRange');
+            const logConsole = document.getElementById('logConsole');
+            const logContent = document.getElementById('logContent');
+            const logCount = document.getElementById('logCount');
 
-        // 页面加载时检查定时任务状态
-        async function loadScheduleStatus() {
-            try {
-                const resp = await fetch('/api/schedule/status');
-                const data = await resp.json();
+            // 页面加载时检查定时任务状态
+            async function loadScheduleStatus() {
+                try {
+                    const resp = await fetch('/api/schedule/status');
+                    const data = await resp.json();
 
-                if (data.hasTask && data.config) {
-                    document.getElementById('scheduleStatus').style.display = 'block';
-                    document.getElementById('scheduleInfo').innerText =
-                        `每天 ${String(data.config.hour).padStart(2, '0')}:${String(data.config.minute).padStart(2, '0')} 执行 | 保存至: ${data.config.downloadPath}`;
-                    document.getElementById('scheduleHour').value = data.config.hour;
-                    document.getElementById('scheduleMinute').value = data.config.minute;
-                    document.getElementById('downloadPath').value = data.config.downloadPath;
-                } else {
-                    document.getElementById('scheduleStatus').style.display = 'none';
+                    if (data.hasTask && data.config) {
+                        document.getElementById('scheduleStatus').style.display = 'block';
+                        document.getElementById('scheduleInfo').innerText =
+                            `每天 ${String(data.config.hour).padStart(2, '0')}:${String(data.config.minute).padStart(2, '0')} 执行 | 保存至: ${data.config.downloadPath}`;
+                        document.getElementById('scheduleHour').value = data.config.hour;
+                        document.getElementById('scheduleMinute').value = data.config.minute;
+                        document.getElementById('downloadPath').value = data.config.downloadPath;
+                    } else {
+                        document.getElementById('scheduleStatus').style.display = 'none';
+                    }
+                } catch (e) {
+                    console.error('加载定时任务状态失败:', e);
                 }
-            } catch (e) {
-                console.error('加载定时任务状态失败:', e);
-            }
-        }
-
-        loadScheduleStatus(); // 初始化时加载
-
-        quickTime.onchange = () => {
-            if (quickTime.value === 'custom') {
-                customTimeRange.style.display = 'grid';
-            } else {
-                customTimeRange.style.display = 'none';
-                updateDatesByQuickRange(parseInt(quickTime.value));
-            }
-        };
-
-        function updateDatesByQuickRange(days) {
-            const end = new Date();
-            const start = new Date();
-            start.setDate(end.getDate() - days);
-
-            document.getElementById('startTime').value = start.toISOString().split('T')[0];
-            document.getElementById('endTime').value = end.toISOString().split('T')[0];
-        }
-
-        startBtn.onclick = async () => {
-            const quickTimeValue = document.getElementById('quickTime').value;
-            let startTime, endTime;
-
-            if (quickTimeValue === 'custom') {
-                // 自定义日期，传实际日期字符串
-                startTime = document.getElementById('startTime').value;
-                endTime = document.getElementById('endTime').value;
-            } else {
-                // 快捷选项，传快捷代码（后端会点击对应按钮）
-                startTime = quickTimeValue; // "0", "7", "30", "180", "365", "1095"
-                endTime = "";
             }
 
-            const payload = {
-                area: document.getElementById('area').value,
-                startTime: startTime,
-                endTime: endTime,
-                startPage: parseInt(document.getElementById('startPage').value),
-                maxPages: parseInt(document.getElementById('maxPages').value),
-                title: document.getElementById('keyword').value,
-                useProxy: document.getElementById('useProxy').checked
+            loadScheduleStatus(); // 初始化时加载
+
+            quickTime.onchange = () => {
+                if (quickTime.value === 'custom') {
+                    customTimeRange.style.display = 'grid';
+                } else {
+                    customTimeRange.style.display = 'none';
+                    updateDatesByQuickRange(parseInt(quickTime.value));
+                }
             };
 
-            startBtn.disabled = true;
-            statusDiv.style.display = 'block';
-            statusDiv.className = 'running';
-            statusDiv.innerText = '正在执行爬取任务，请稍候...';
-            downloadBtn.style.display = 'none';
-            logConsole.style.display = 'block';
-            logContent.innerHTML = '';
+            function updateDatesByQuickRange(days) {
+                const end = new Date();
+                const start = new Date();
+                start.setDate(end.getDate() - days);
 
-            try {
-                const resp = await fetch('/api/crawl', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-                const { task_id } = await resp.json();
-                currentTaskId = task_id;
-                checkStatus();
-            } catch (e) {
-                statusDiv.className = 'failed';
-                statusDiv.innerText = '启动失败: ' + e.message;
-                startBtn.disabled = false;
+                document.getElementById('startTime').value = start.toISOString().split('T')[0];
+                document.getElementById('endTime').value = end.toISOString().split('T')[0];
             }
-        };
 
-        async function checkStatus() {
-            if (!currentTaskId) return;
+            startBtn.onclick = async () => {
+                const quickTimeValue = document.getElementById('quickTime').value;
+                let startTime, endTime;
 
-            try {
-                const resp = await fetch('/api/status/' + currentTaskId);
-                const result = await resp.json();
-
-                // Update logs
-                if (result.logs) {
-                    logCount.innerText = result.logs.length + ' lines';
-                    logContent.innerHTML = result.logs.map(line => {
-                        // Make URLs clickable
-                        const urlMatch = line.match(/(http:\/\/[^\s]+)/);
-                        if (urlMatch) {
-                            const url = urlMatch[1];
-                            const safeLine = line.replace(url, `<span class="log-url" onclick="window.open('${url}', '_blank')">${url}</span>`);
-                            return `<div class="log-entry">${safeLine}</div>`;
-                        }
-                        return `<div class="log-entry">${line}</div>`;
-                    }).join('');
-                    logContent.scrollTop = logContent.scrollHeight;
-                }
-
-                if (result.status === 'running') {
-                    setTimeout(checkStatus, 2000);
-                } else if (result.status === 'completed') {
-                    statusDiv.className = 'completed';
-                    statusDiv.innerText = '爬取完成！共生成 1 个文件。';
-                    downloadBtn.style.display = 'block';
-                    startBtn.disabled = false;
+                if (quickTimeValue === 'custom') {
+                    // 自定义日期，传实际日期字符串
+                    startTime = document.getElementById('startTime').value;
+                    endTime = document.getElementById('endTime').value;
                 } else {
-                    statusDiv.className = 'failed';
-                    statusDiv.innerText = '任务失败: ' + (result.error || '未知错误');
-                    startBtn.disabled = false;
+                    // 快捷选项，传快捷代码（后端会点击对应按钮）
+                    startTime = quickTimeValue; // "0", "7", "30", "180", "365", "1095"
+                    endTime = "";
                 }
-            } catch (e) {
-                console.error(e);
-            }
-        }
 
-        // 创建定时任务
-        createScheduleBtn.onclick = async () => {
-            const hour = parseInt(document.getElementById('scheduleHour').value);
-            const minute = parseInt(document.getElementById('scheduleMinute').value);
-            const downloadPath = document.getElementById('downloadPath').value.trim();
-            const area = document.getElementById('area').value;
-
-            if (!downloadPath) {
-                alert('请输入下载保存路径');
-                return;
-            }
-
-            try {
-                const resp = await fetch('/api/schedule/create', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ area, hour, minute, downloadPath })
-                });
-                const data = await resp.json();
-
-                if (data.success) {
-                    alert('✅ ' + data.message);
-                    loadScheduleStatus(); // 刷新状态
-                } else {
-                    alert('❌ 创建失败');
-                }
-            } catch (e) {
-                alert('❌ 创建定时任务失败: ' + e);
-            }
-        };
-
-        // 删除定时任务
-        deleteScheduleBtn.onclick = async () => {
-            if (!confirm('确定要删除定时任务吗？')) return;
-
-            try {
-                const resp = await fetch('/api/schedule/delete', { method: 'DELETE' });
-                const data = await resp.json();
-
-                if (data.success) {
-                    alert('✅ ' + data.message);
-                    loadScheduleStatus(); // 刷新状态
-                } else {
-                    alert('❌ 删除失败');
-                }
-            } catch (e) {
-                alert('❌ 删除定时任务失败: ' + e);
-            }
-        };
-
-        downloadBtn.onclick = () => {
-            window.location.href = '/api/download/' + currentTaskId;
-        };
-
-        // Initialize default date range
-        updateDatesByQuickRange(30);
-
-        function initCustomSelects() {
-            const selects = document.querySelectorAll('select');
-            selects.forEach(select => {
-                if (select.style.display === 'none') return; // Avoid double init
-
-                const wrapper = document.createElement('div');
-                wrapper.className = 'custom-select-wrapper';
-
-                const trigger = document.createElement('div');
-                trigger.className = 'select-trigger';
-                trigger.innerText = select.options[select.selectedIndex].text;
-
-                const optionsContainer = document.createElement('div');
-                optionsContainer.className = 'custom-options';
-
-                Array.from(select.options).forEach((opt, idx) => {
-                    const customOpt = document.createElement('div');
-                    customOpt.className = 'custom-option';
-                    if (opt.selected) customOpt.classList.add('selected');
-                    customOpt.innerText = opt.text;
-                    customOpt.dataset.value = opt.value;
-
-                    customOpt.onclick = (e) => {
-                        e.stopPropagation();
-                        // Update native select
-                        select.value = opt.value;
-                        // Update UI
-                        trigger.innerText = opt.text;
-                        wrapper.querySelectorAll('.custom-option').forEach(o => o.classList.remove('selected'));
-                        customOpt.classList.add('selected');
-                        wrapper.classList.remove('open');
-
-                        // Trigger native onchange
-                        const event = new Event('change');
-                        select.dispatchEvent(event);
-
-                        // If it's the quickTime select, our onchange handler will run
-                    };
-                    optionsContainer.appendChild(customOpt);
-                });
-
-                trigger.onclick = (e) => {
-                    e.stopPropagation();
-                    // Close others
-                    document.querySelectorAll('.custom-select-wrapper').forEach(w => {
-                        if (w !== wrapper) w.classList.remove('open');
-                    });
-                    wrapper.classList.toggle('open');
+                const payload = {
+                    area: document.getElementById('area').value,
+                    startTime: startTime,
+                    endTime: endTime,
+                    startPage: parseInt(document.getElementById('startPage').value),
+                    maxPages: parseInt(document.getElementById('maxPages').value),
+                    title: document.getElementById('keyword').value,
+                    useProxy: document.getElementById('useProxy').checked
                 };
 
-                wrapper.appendChild(trigger);
-                wrapper.appendChild(optionsContainer);
+                startBtn.disabled = true;
+                statusDiv.style.display = 'block';
+                statusDiv.className = 'running';
+                statusDiv.innerText = '正在执行爬取任务，请稍候...';
+                downloadBtn.style.display = 'none';
+                logConsole.style.display = 'block';
+                logContent.innerHTML = '';
 
-                // Hide native, insert custom
-                select.style.display = 'none';
-                select.parentNode.insertBefore(wrapper, select.nextSibling);
+                try {
+                    const resp = await fetch('/api/crawl', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                    const { task_id } = await resp.json();
+                    currentTaskId = task_id;
+                    checkStatus();
+                } catch (e) {
+                    statusDiv.className = 'failed';
+                    statusDiv.innerText = '启动失败: ' + e.message;
+                    startBtn.disabled = false;
+                }
+            };
 
-                // Keep the trigger updated if native select value is changed programmatically
-                // (e.g. if we had other scripts changing it)
-            });
+            async function checkStatus() {
+                if (!currentTaskId) return;
 
-            document.addEventListener('click', () => {
-                document.querySelectorAll('.custom-select-wrapper').forEach(w => w.classList.remove('open'));
-            });
-        }
+                try {
+                    const resp = await fetch('/api/status/' + currentTaskId);
+                    const result = await resp.json();
 
-        // Run hydration
-        initCustomSelects();
+                    // Update logs
+                    if (result.logs) {
+                        logCount.innerText = result.logs.length + ' lines';
+                        logContent.innerHTML = result.logs.map(line => {
+                            // Make URLs clickable
+                            const urlMatch = line.match(/(http:\/\/[^\s]+)/);
+                            if (urlMatch) {
+                                const url = urlMatch[1];
+                                const safeLine = line.replace(url, `<span class="log-url" onclick="window.open('${url}', '_blank')">${url}</span>`);
+                                return `<div class="log-entry">${safeLine}</div>`;
+                            }
+                            return `<div class="log-entry">${line}</div>`;
+                        }).join('');
+                        logContent.scrollTop = logContent.scrollHeight;
+                    }
 
-        // One more thing: if we're using updateDatesByQuickRange(30), the selective trigger text
-        // for #quickTime should be correct. Since we run init after the first call, it's fine.
-    </script>
+                    if (result.status === 'running') {
+                        setTimeout(checkStatus, 2000);
+                    } else if (result.status === 'completed') {
+                        statusDiv.className = 'completed';
+                        statusDiv.innerText = '爬取完成！共生成 1 个文件。';
+                        downloadBtn.style.display = 'block';
+                        startBtn.disabled = false;
+                    } else {
+                        statusDiv.className = 'failed';
+                        statusDiv.innerText = '任务失败: ' + (result.error || '未知错误');
+                        startBtn.disabled = false;
+                    }
+                } catch (e) {
+                    console.error(e);
+                }
+            }
+
+            // 创建定时任务
+            createScheduleBtn.onclick = async () => {
+                const hour = parseInt(document.getElementById('scheduleHour').value);
+                const minute = parseInt(document.getElementById('scheduleMinute').value);
+                const downloadPath = document.getElementById('downloadPath').value.trim();
+                const area = document.getElementById('area').value;
+
+                if (!downloadPath) {
+                    alert('请输入下载保存路径');
+                    return;
+                }
+
+                try {
+                    const resp = await fetch('/api/schedule/create', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ area, hour, minute, downloadPath })
+                    });
+                    const data = await resp.json();
+
+                    if (data.success) {
+                        alert('✅ ' + data.message);
+                        loadScheduleStatus(); // 刷新状态
+                    } else {
+                        alert('❌ 创建失败');
+                    }
+                } catch (e) {
+                    alert('❌ 创建定时任务失败: ' + e);
+                }
+            };
+
+            // 删除定时任务
+            deleteScheduleBtn.onclick = async () => {
+                if (!confirm('确定要删除定时任务吗？')) return;
+
+                try {
+                    const resp = await fetch('/api/schedule/delete', { method: 'DELETE' });
+                    const data = await resp.json();
+
+                    if (data.success) {
+                        alert('✅ ' + data.message);
+                        loadScheduleStatus(); // 刷新状态
+                    } else {
+                        alert('❌ 删除失败');
+                    }
+                } catch (e) {
+                    alert('❌ 删除定时任务失败: ' + e);
+                }
+            };
+
+            downloadBtn.onclick = () => {
+                window.location.href = '/api/download/' + currentTaskId;
+            };
+
+            // Initialize default date range
+            updateDatesByQuickRange(30);
+
+            function initCustomSelects() {
+                const selects = document.querySelectorAll('select');
+                selects.forEach(select => {
+                    if (select.style.display === 'none') return; // Avoid double init
+
+                    const wrapper = document.createElement('div');
+                    wrapper.className = 'custom-select-wrapper';
+
+                    const trigger = document.createElement('div');
+                    trigger.className = 'select-trigger';
+                    trigger.innerText = select.options[select.selectedIndex].text;
+
+                    const optionsContainer = document.createElement('div');
+                    optionsContainer.className = 'custom-options';
+
+                    Array.from(select.options).forEach((opt, idx) => {
+                        const customOpt = document.createElement('div');
+                        customOpt.className = 'custom-option';
+                        if (opt.selected) customOpt.classList.add('selected');
+                        customOpt.innerText = opt.text;
+                        customOpt.dataset.value = opt.value;
+
+                        customOpt.onclick = (e) => {
+                            e.stopPropagation();
+                            // Update native select
+                            select.value = opt.value;
+                            // Update UI
+                            trigger.innerText = opt.text;
+                            wrapper.querySelectorAll('.custom-option').forEach(o => o.classList.remove('selected'));
+                            customOpt.classList.add('selected');
+                            wrapper.classList.remove('open');
+
+                            // Trigger native onchange
+                            const event = new Event('change');
+                            select.dispatchEvent(event);
+
+                            // If it's the quickTime select, our onchange handler will run
+                        };
+                        optionsContainer.appendChild(customOpt);
+                    });
+
+                    trigger.onclick = (e) => {
+                        e.stopPropagation();
+                        // Close others
+                        document.querySelectorAll('.custom-select-wrapper').forEach(w => {
+                            if (w !== wrapper) w.classList.remove('open');
+                        });
+                        wrapper.classList.toggle('open');
+                    };
+
+                    wrapper.appendChild(trigger);
+                    wrapper.appendChild(optionsContainer);
+
+                    // Hide native, insert custom
+                    select.style.display = 'none';
+                    select.parentNode.insertBefore(wrapper, select.nextSibling);
+
+                    // Keep the trigger updated if native select value is changed programmatically
+                    // (e.g. if we had other scripts changing it)
+                });
+
+                document.addEventListener('click', () => {
+                    document.querySelectorAll('.custom-select-wrapper').forEach(w => w.classList.remove('open'));
+                });
+            }
+
+            // Run hydration
+            initCustomSelects();
+
+            // One more thing: if we're using updateDatesByQuickRange(30), the selective trigger text
+            // for #quickTime should be correct. Since we run init after the first call, it's fine.
+        </script>
 </body>
 
 </html>
