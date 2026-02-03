@@ -406,20 +406,15 @@
             <!-- 当前定时任务状态 -->
             <div id="scheduleStatus"
                 style="display: none; margin-top: 1rem; padding: 1.25rem; background: linear-gradient(135deg, rgba(34, 197, 94, 0.08) 0%, rgba(34, 197, 94, 0.12) 100%); border: 1px solid rgba(34, 197, 94, 0.25); border-radius: 0.75rem; box-shadow: 0 2px 8px rgba(34, 197, 94, 0.1);">
-                <div style="display: flex; justify-content: space-between; align-items: center; gap: 1.5rem;">
-                    <div style="flex: 1;">
-                        <div
-                            style="color: #22c55e; font-weight: 600; font-size: 1rem; margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem;">
-                            <span style="font-size: 1.2rem;">✓</span>
-                            <span>定时任务已启用</span>
-                        </div>
-                        <div id="scheduleInfo" style="color: #64748b; font-size: 0.9rem; line-height: 1.5;"></div>
+                <div style="display: grid; grid-template-columns: 6fr 4fr; gap: 1.5rem; align-items: center;">
+                    <div id="scheduleInfo" style="color: #64748b; font-size: 0.9rem; line-height: 1.5;"></div>
+                    <div style="display: flex; justify-content: flex-end;">
+                        <button id="deleteScheduleBtn"
+                            style="padding: 0.5rem 1rem; background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); border: none; color: white; border-radius: 0.5rem; cursor: pointer; font-size: 0.875rem; font-weight: 500; transition: all 0.2s; white-space: nowrap; box-shadow: 0 2px 4px rgba(239, 68, 68, 0.2);"
+                            onmouseover="this.style.transform='translateY(-1px)'; this.style.boxShadow='0 4px 8px rgba(239, 68, 68, 0.3)'"
+                            onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 2px 4px rgba(239, 68, 68, 0.2)'">🗑️
+                            删除</button>
                     </div>
-                    <button id="deleteScheduleBtn"
-                        style="padding: 0.5rem 1rem; background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); border: none; color: white; border-radius: 0.5rem; cursor: pointer; font-size: 0.875rem; font-weight: 500; transition: all 0.2s; white-space: nowrap; box-shadow: 0 2px 4px rgba(239, 68, 68, 0.2);"
-                        onmouseover="this.style.transform='translateY(-1px)'; this.style.boxShadow='0 4px 8px rgba(239, 68, 68, 0.3)'"
-                        onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 2px 4px rgba(239, 68, 68, 0.2)'">🗑️
-                        删除</button>
                 </div>
             </div>
 
@@ -497,8 +492,25 @@
 
                     if (data.hasTask && data.config) {
                         document.getElementById('scheduleStatus').style.display = 'block';
-                        document.getElementById('scheduleInfo').innerText =
-                            `每天 ${String(data.config.hour).padStart(2, '0')}:${String(data.config.minute).padStart(2, '0')} 执行 | 保存至: ${data.config.downloadPath}`;
+
+                        // 生成文件名（当前日期+执行时间）
+                        const now = new Date();
+                        const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '');
+                        const timeStr = `${String(data.config.hour).padStart(2, '0')}${String(data.config.minute).padStart(2, '0')}`;
+                        const filename = `shandong_scheduled_${dateStr}_${timeStr}.xlsx`;
+
+                        // 构建多行信息显示
+                        const infoHTML = `
+                        <div style="color: #22c55e; font-size: 0.95rem; line-height: 1.8;">
+                            <div>✓ 定时任务已启用</div>
+                            <div>✓ 每天 ${String(data.config.hour).padStart(2, '0')}:${String(data.config.minute).padStart(2, '0')} 执行</div>
+                            <div>✓ 爬取数据：省级、今日</div>
+                            <div>✓ 保存路径：${data.config.downloadPath}</div>
+                            <div style="color: #64748b;">✓ 文件名称：${filename}</div>
+                        </div>
+                    `;
+                        document.getElementById('scheduleInfo').innerHTML = infoHTML;
+
                         document.getElementById('scheduleHour').value = data.config.hour;
                         document.getElementById('scheduleMinute').value = data.config.minute;
                         document.getElementById('downloadPath').value = data.config.downloadPath;
