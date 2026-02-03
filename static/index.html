@@ -323,6 +323,18 @@
 </head>
 
 <body>
+    <!-- 自定义对话框 -->
+    <div id="customModal"
+        style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.7); z-index: 9999; backdrop-filter: blur(4px);">
+        <div
+            style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); padding: 2rem; border-radius: 1rem; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5); min-width: 400px; border: 1px solid #334155;">
+            <div id="modalTitle" style="font-size: 1.25rem; font-weight: 600; color: #f1f5f9; margin-bottom: 1rem;">
+            </div>
+            <div id="modalMessage" style="color: #94a3b8; margin-bottom: 1.5rem; line-height: 1.6;"></div>
+            <div id="modalButtons" style="display: flex; gap: 0.75rem; justify-content: flex-end;"></div>
+        </div>
+    </div>
+
     <div class="container">
         <h1>山东政采爬虫控制台</h1>
         <div class="form-group">
@@ -371,7 +383,7 @@
             </div>
             <div
                 style="padding: 0.75rem; background: rgba(59, 130, 246, 0.1); border-left: 3px solid #3b82f6; border-radius: 0.5rem; margin-bottom: 1rem;">
-                <div style="color: #60a5fa; font-size: 0.9rem; font-weight: 500;">📅 爬取范围：今日数据（最多100页）</div>
+                <div style="color: #60a5fa; font-size: 0.9rem; font-weight: 500;">爬取范围：今日数据（最多100页）</div>
             </div>
 
             <!-- 隐藏的爬取页数配置（固定值） -->
@@ -399,7 +411,7 @@
                         placeholder="例如: D:\spider_downloads">
                 </div>
                 <div style="color: #94a3b8; font-size: 0.85rem; margin-top: 0.5rem;">
-                    💡 定时任务将每天固定时间执行，爬取"今日"数据（最多100页），并自动保存到指定路径
+                    定时任务将每天固定时间执行，爬取"今日"数据（最多100页），并自动保存到指定路径
                 </div>
             </div>
 
@@ -410,10 +422,9 @@
                     <div id="scheduleInfo" style="color: #64748b; font-size: 0.9rem; line-height: 1.5;"></div>
                     <div style="display: flex; justify-content: flex-end;">
                         <button id="deleteScheduleBtn"
-                            style="padding: 0.5rem 1rem; background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); border: none; color: white; border-radius: 0.5rem; cursor: pointer; font-size: 0.875rem; font-weight: 500; transition: all 0.2s; white-space: nowrap; box-shadow: 0 2px 4px rgba(239, 68, 68, 0.2);"
+                            style="padding: 0.75rem 1.5rem; background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); border: none; color: white; border-radius: 0.5rem; cursor: pointer; font-size: 0.875rem; font-weight: 500; transition: all 0.2s; white-space: nowrap; box-shadow: 0 2px 4px rgba(239, 68, 68, 0.2);"
                             onmouseover="this.style.transform='translateY(-1px)'; this.style.boxShadow='0 4px 8px rgba(239, 68, 68, 0.3)'"
-                            onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 2px 4px rgba(239, 68, 68, 0.2)'">🗑️
-                            删除</button>
+                            onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 2px 4px rgba(239, 68, 68, 0.2)'">删除</button>
                     </div>
                 </div>
             </div>
@@ -484,6 +495,38 @@
             const logContent = document.getElementById('logContent');
             const logCount = document.getElementById('logCount');
 
+            // 自定义对话框函数
+            function showAlert(title, message) {
+                return new Promise((resolve) => {
+                    const modal = document.getElementById('customModal');
+                    document.getElementById('modalTitle').textContent = title;
+                    document.getElementById('modalMessage').textContent = message;
+                    const btnsHtml = `<button onclick="closeModal(); window.modalResolve(true);" style="padding: 0.65rem 1.5rem; background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); border: none; color: white; border-radius: 0.5rem; cursor: pointer; font-weight: 500;">确定</button>`;
+                    document.getElementById('modalButtons').innerHTML = btnsHtml;
+                    modal.style.display = 'block';
+                    window.modalResolve = resolve;
+                });
+            }
+
+            function showConfirm(title, message) {
+                return new Promise((resolve) => {
+                    const modal = document.getElementById('customModal');
+                    document.getElementById('modalTitle').textContent = title;
+                    document.getElementById('modalMessage').textContent = message;
+                    const btnsHtml = `
+                        <button onclick="closeModal(); window.modalResolve(false);" style="padding: 0.65rem 1.5rem; background: #475569; border: none; color: white; border-radius: 0.5rem; cursor: pointer; font-weight: 500;">取消</button>
+                        <button onclick="closeModal(); window.modalResolve(true);" style="padding: 0.65rem 1.5rem; background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); border: none; color: white; border-radius: 0.5rem; cursor: pointer; font-weight: 500;">确定</button>
+                    `;
+                    document.getElementById('modalButtons').innerHTML = btnsHtml;
+                    modal.style.display = 'block';
+                    window.modalResolve = resolve;
+                });
+            }
+
+            function closeModal() {
+                document.getElementById('customModal').style.display = 'none';
+            }
+
             // 页面加载时检查定时任务状态
             async function loadScheduleStatus() {
                 try {
@@ -506,7 +549,6 @@
                             <div>✓ 每天 ${String(data.config.hour).padStart(2, '0')}:${String(data.config.minute).padStart(2, '0')} 执行</div>
                             <div>✓ 爬取数据：省级、今日</div>
                             <div>✓ 保存路径：${data.config.downloadPath}</div>
-                            <div style="color: #64748b;">✓ 文件名称：${filename}</div>
                         </div>
                     `;
                         document.getElementById('scheduleInfo').innerHTML = infoHTML;
