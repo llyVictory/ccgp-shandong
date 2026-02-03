@@ -680,7 +680,7 @@
                 const area = document.getElementById('area').value;
 
                 if (!downloadPath) {
-                    alert('请输入下载保存路径');
+                    await showAlert('提示', '请输入下载保存路径');
                     return;
                 }
 
@@ -693,32 +693,33 @@
                     const data = await resp.json();
 
                     if (data.success) {
-                        alert('✅ ' + data.message);
+                        await showAlert('成功', data.message);
                         loadScheduleStatus(); // 刷新状态
                     } else {
-                        alert('❌ 创建失败');
+                        await showAlert('失败', '创建失败');
                     }
                 } catch (e) {
-                    alert('❌ 创建定时任务失败: ' + e);
+                    await showAlert('错误', '创建定时任务失败: ' + e);
                 }
             };
 
             // 删除定时任务
             deleteScheduleBtn.onclick = async () => {
-                if (!confirm('确定要删除定时任务吗？')) return;
+                const confirmed = await showConfirm('删除定时任务', '确定要删除定时任务吗？');
+                if (!confirmed) return;
 
                 try {
                     const resp = await fetch('/api/schedule/delete', { method: 'DELETE' });
                     const data = await resp.json();
 
                     if (data.success) {
-                        alert('✅ ' + data.message);
+                        await showAlert('成功', data.message);
                         loadScheduleStatus(); // 刷新状态
                     } else {
-                        alert('❌ 删除失败');
+                        await showAlert('失败', '删除失败');
                     }
                 } catch (e) {
-                    alert('❌ 删除定时任务失败: ' + e);
+                    await showAlert('错误', '删除定时任务失败: ' + e);
                 }
             };
 
