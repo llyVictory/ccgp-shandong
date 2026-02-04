@@ -371,7 +371,7 @@ class Shandong(object):
                 records = self.browser.extract_records()
                 
                 rescue_attempts = 0
-                max_rescue_attempts = 10  # 最多重试10次，防止死循环
+                max_rescue_attempts = 5  # ✅ 最多重试5次验证码,避免无限循环
                 
                 while not records and rescue_attempts < max_rescue_attempts:
                     rescue_attempts += 1
@@ -392,8 +392,15 @@ class Shandong(object):
                     records = self.browser.extract_records()
                 
                 if not records:
-                    self._log(f"已重试 {max_rescue_attempts} 次仍无数据，跳过此页继续下一页")
-                    # 不break，继续尝试下一页
+                    self._log(f"⚠️ 已重试 {max_rescue_attempts} 次验证码仍无数据")
+                    
+                    # 🔥 关键优化：第一页无数据直接退出,认为今日无数据
+                    if current_page_idx == start_page:
+                        self._log(f"✅ 第一页在 {max_rescue_attempts} 次重试后仍无数据，判定为今日无数据，停止爬取")
+                        break
+                    
+                    # 非第一页则跳过继续
+                    self._log(f"跳过第 {current_page_idx} 页，继续下一页")
                     pages_crawled += 1
                     current_page_idx += 1
                     if not self.browser.next_page():

@@ -433,7 +433,7 @@
             </div>
 
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 1.5rem;">
-                <button id="createScheduleBtn">创建定时任务</button>
+                <button id="createScheduleBtn">创建/更新定时任务</button>
                 <button id="startBtn"
                     style="background: linear-gradient(135deg, #64748b 0%, #475569 100%);">立即执行一次</button>
             </div>
@@ -702,7 +702,7 @@
                         await showAlert('失败', '创建失败');
                     }
                 } catch (e) {
-                    await showAlert('错误', '创建定时任务失败: ' + e);
+                    await showAlert('错误', '创建/更新定时任务失败: ' + e);
                 }
             };
 

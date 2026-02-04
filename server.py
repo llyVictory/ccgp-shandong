@@ -265,7 +265,7 @@ def run_scheduled_spider():
 
 @app.post("/api/schedule/create")
 async def create_schedule(req: ScheduleTaskRequest):
-    """创建定时任务"""
+    """创建/更新定时任务"""
     # 保存配置
     config = {
         "area": req.area,
