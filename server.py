@@ -30,6 +30,14 @@ scheduler.start()
 # 定时任务配置文件
 SCHEDULE_CONFIG_FILE = "schedule_config.json"
 
+# 定时任务日志和状态
+scheduled_task_logs = []
+scheduled_task_status = {
+    "running": False,
+    "last_result": None,
+    "last_run_time": None
+}
+
 class CrawlRequest(BaseModel):
     area: str = "370000"
     startTime: str = ""
@@ -144,16 +152,30 @@ def run_spider_task(task_id: str, req: CrawlRequest):
 
 def run_scheduled_spider():
     """定时任务执行函数"""
-    print("=" * 50)
-    print("定时任务开始执行...")
-    print("=" * 50)
+    global scheduled_task_logs, scheduled_task_status
+    
+    # 清空之前的日志
+    scheduled_task_logs = []
+    scheduled_task_status["running"] = True
+    scheduled_task_status["last_run_time"] = None
+    scheduled_task_status["last_result"] = None
+    
+    def add_log(msg):
+        """添加日志到全局列表"""
+        scheduled_task_logs.append(msg)
+        print(f"[定时任务] {msg}")
+    
+    add_log("=" * 50)
+    add_log("定时任务开始执行...")
+    add_log("=" * 50)
     
     # 读取配置
     try:
         with open(SCHEDULE_CONFIG_FILE, 'r', encoding='utf-8') as f:
             config = json.load(f)
     except:
-        print("未找到定时任务配置，跳过执行")
+        add_log("未找到定时任务配置，跳过执行")
+        scheduled_task_status["running"] = False
         return
     
     area = config.get("area", "370000")
@@ -161,14 +183,17 @@ def run_scheduled_spider():
     
     # 确保下载目录存在
     os.makedirs(download_path, exist_ok=True)
+    add_log(f"下载路径: {download_path}")
     
     # 定义日志回调函数
     def log_callback(msg):
-        print(f"[定时任务] {msg}")
+        add_log(msg)
     
     # 执行爬取（今日数据，100页）
     spider = Shandong(use_proxy=False)
     spider.log_func = log_callback  # 设置日志回调
+    
+    add_log("开始爬取今日数据（最多100页）...")
     
     data = spider.run(
         max_pages=100,
@@ -201,10 +226,29 @@ def run_scheduled_spider():
         filepath = os.path.join(download_path, filename)
         
         df.to_excel(filepath, index=False)
-        print(f"✅ 定时任务完成！数据已保存到: {filepath}")
-        print(f"   共抓取 {len(df)} 条记录")
+        add_log(f"数据已保存到: {filepath}")
+        add_log(f"共抓取 {len(df)} 条记录")
+        
+        # 设置任务完成状态
+        scheduled_task_status["running"] = False
+        scheduled_task_status["last_run_time"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        scheduled_task_status["last_result"] = {
+            "success": True,
+            "count": len(df),
+            "filepath": filepath,
+            "filename": filename
+        }
+        add_log("=" * 50)
+        add_log("定时任务执行完成！")
+        add_log("=" * 50)
     else:
-        print("⚠️ 定时任务完成，但未抓取到任何数据")
+        add_log("未抓取到任何数据")
+        scheduled_task_status["running"] = False
+        scheduled_task_status["last_run_time"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        scheduled_task_status["last_result"] = {
+            "success": False,
+            "count": 0
+        }
 
 @app.post("/api/schedule/create")
 async def create_schedule(req: ScheduleTaskRequest):
@@ -229,7 +273,7 @@ async def create_schedule(req: ScheduleTaskRequest):
     
     return {
         "success": True,
-        "message": f"定时任务已创建：每天 {req.hour:02d}:{req.minute:02d} 执行",
+        "message": f"定时任务已创建/更新：每天 {req.hour:02d}:{req.minute:02d} 执行",
         "config": config
     }
 
@@ -259,6 +303,14 @@ async def delete_schedule():
         os.remove(SCHEDULE_CONFIG_FILE)
     
     return {"success": True, "message": "定时任务已删除"}
+
+@app.get("/api/schedule/logs")
+async def get_schedule_logs():
+    """获取定时任务日志和状态"""
+    return {
+        "logs": scheduled_task_logs,
+        "status": scheduled_task_status
+    }
 
 
 if __name__ == "__main__":

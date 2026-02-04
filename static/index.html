@@ -338,7 +338,7 @@
     <div class="container">
         <h1>山东政采爬虫控制台</h1>
         <div class="form-group">
-            <label>搜索关键词 (可选)</label>
+            <label>搜索关键词 (待开放)</label>
             <input type="text" id="keyword" placeholder="例如：林地、荒漠化..." disabled
                 style="background: #1e293b; cursor: not-allowed; opacity: 0.6;">
         </div>
@@ -382,10 +382,10 @@
                     <input type="date" id="endTime">
                 </div>
             </div>
-            <div
+            <!-- <div
                 style="padding: 0.75rem; background: rgba(59, 130, 246, 0.1); border-left: 3px solid #3b82f6; border-radius: 0.5rem; margin-bottom: 1rem;">
                 <div style="color: #60a5fa; font-size: 0.9rem; font-weight: 500;">爬取范围：今日数据（最多100页）</div>
-            </div>
+            </div> -->
 
             <!-- 隐藏的爬取页数配置（固定值） -->
             <input type="hidden" id="startPage" value="1">
@@ -395,7 +395,7 @@
             <!-- 定时任务配置 -->
             <div
                 style="margin-top: 2rem; padding: 1.5rem; background: rgba(59, 130, 246, 0.05); border: 1px solid rgba(59, 130, 246, 0.2); border-radius: 0.75rem;">
-                <h3 style="margin: 0 0 1rem 0; color: #60a5fa; font-size: 1.1rem;">⏰ 定时任务配置</h3>
+                <h3 style="margin: 0 0 1rem 0; color: #60a5fa; font-size: 1.1rem;"> 定时任务配置</h3>
                 <div class="form-group" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
                     <div>
                         <label>执行时间（时）</label>
@@ -412,7 +412,7 @@
                         placeholder="例如: D:\spider_downloads">
                 </div>
                 <div style="color: #94a3b8; font-size: 0.85rem; margin-top: 0.5rem;">
-                    定时任务将每天固定时间执行，爬取"今日"数据（最多100页），并自动保存到指定路径
+                    定时任务将每天固定时间执行，时间范围固定为"今日"，并自动保存到指定路径
                 </div>
             </div>
 
@@ -566,6 +566,45 @@
             }
 
             loadScheduleStatus(); // 初始化时加载
+
+            // 轮询定时任务日志
+            let logPollingInterval = null;
+            let lastNotifiedTime = null;
+
+            async function pollScheduledTaskLogs() {
+                try {
+                    const resp = await fetch('/api/schedule/logs');
+                    const data = await resp.json();
+
+                    if (data.logs && data.logs.length > 0) {
+                        // 显示日志控制台
+                        logConsole.style.display = 'block';
+
+                        // 更新日志内容
+                        logContent.innerHTML = data.logs.map(line => {
+                            return `<div class="log-entry">${line}</div>`;
+                        }).join('');
+                        logContent.scrollTop = logContent.scrollHeight;
+                        logCount.textContent = `${data.logs.length} lines`;
+                    }
+
+                    // 检查任务是否完成
+                    if (data.status && !data.status.running && data.status.last_result && data.status.last_run_time !== lastNotifiedTime) {
+                        lastNotifiedTime = data.status.last_run_time;
+
+                        if (data.status.last_result.success) {
+                            const result = data.status.last_result;
+                            const message = `今日定时任务（${data.status.last_run_time}）完成\n\n共抓取 ${result.count} 条记录\n\n请到以下路径查看数据：\n${result.filepath}`;
+                            await showAlert('定时任务完成', message);
+                        }
+                    }
+                } catch (e) {
+                    console.error('轮询定时任务日志失败:', e);
+                }
+            }
+
+            // 每3秒轮询一次
+            logPollingInterval = setInterval(pollScheduledTaskLogs, 3000);
 
             quickTime.onchange = () => {
                 if (quickTime.value === 'custom') {
