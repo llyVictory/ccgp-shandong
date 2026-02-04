@@ -7,9 +7,9 @@ echo   首次安装向导
 echo ========================================
 echo.
 echo 此脚本将完成以下操作：
-echo 1. 检查Python环境
-echo 2. 创建虚拟环境
-echo 3. 安装所需依赖包
+echo  1. 检查Python环境
+echo  2. 创建虚拟环境
+echo  3. 安装所需依赖包
 echo.
 echo 预计耗时：3-5分钟
 echo.
@@ -41,8 +41,8 @@ echo.
 echo [2/3] 创建虚拟环境...
 if exist "venv" (
     echo [提示] 检测到已存在的虚拟环境，是否删除重建？
-    echo 1 = 保留现有环境
-    echo 2 = 删除重建
+    echo  1 = 保留现有环境
+    echo  2 = 删除重建
     set /p choice="请选择 (1/2): "
     if "!choice!"=="2" (
         echo 正在删除旧环境...
@@ -93,9 +93,9 @@ echo   安装完成！
 echo ========================================
 echo.
 echo 下一步：
-echo 1. 双击运行"启动爬虫.bat"
-echo 2. 浏览器自动打开 http://localhost:8080
-echo 3. 开始使用！
+echo  1. 双击运行"启动爬虫.bat"
+echo  2. 浏览器自动打开 http://localhost:8080
+echo  3. 开始使用！
 echo.
 echo ========================================
 pause
