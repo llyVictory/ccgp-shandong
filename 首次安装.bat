@@ -17,7 +17,7 @@ pause
 
 cd /d "%~dp0"
 
-:: 1. 检查Python
+:: Step 1 - 检查Python
 echo.
 echo [1/3] 检查Python环境...
 python --version >nul 2>&1
@@ -36,7 +36,7 @@ if errorlevel 1 (
 for /f "tokens=2" %%i in ('python --version 2^>^&1') do set PYVER=%%i
 echo [√] Python版本: %PYVER%
 
-:: 2. 创建虚拟环境
+:: Step 2 - 创建虚拟环境
 echo.
 echo [2/3] 创建虚拟环境...
 if exist "venv" (
@@ -62,7 +62,7 @@ if not exist "venv" (
     echo [√] 使用现有虚拟环境
 )
 
-:: 3. 安装依赖
+:: Step 3 - 安装依赖
 echo.
 echo [3/3] 安装依赖包...
 echo 这可能需要几分钟，请耐心等待...
