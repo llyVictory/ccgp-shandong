@@ -204,13 +204,21 @@ def run_scheduled_spider():
         area=area
     )
     
+    # 定义列结构
+    cols = [
+        "序号", "地区", "标题", "发布人", "发布时间",
+        "子序号", "采购项目名称", "采购需求概况", "预算金额(万元)",
+        "拟面向中小企业预留", "预计采购时间", "备注", "Link"
+    ]
+    
+    # 生成文件名（带日期时间）
+    from datetime import datetime
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"shandong_scheduled_{timestamp}.xlsx"
+    filepath = os.path.join(download_path, filename)
+    
     if data:
         df = pd.DataFrame(data)
-        cols = [
-            "序号", "地区", "标题", "发布人", "发布时间",
-            "子序号", "采购项目名称", "采购需求概况", "预算金额(万元)",
-            "拟面向中小企业预留", "预计采购时间", "备注", "Link"
-        ]
         
         for col in cols:
             if col not in df.columns:
@@ -218,12 +226,6 @@ def run_scheduled_spider():
         
         df = df[cols]
         df['序号'] = range(1, len(df) + 1)
-        
-        # 生成文件名（带日期时间）
-        from datetime import datetime
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"shandong_scheduled_{timestamp}.xlsx"
-        filepath = os.path.join(download_path, filename)
         
         df.to_excel(filepath, index=False)
         add_log(f"数据已保存到: {filepath}")
@@ -242,13 +244,24 @@ def run_scheduled_spider():
         add_log("定时任务执行完成！")
         add_log("=" * 50)
     else:
-        add_log("未抓取到任何数据")
+        # 创建空的Excel文件
+        df = pd.DataFrame(columns=cols)
+        df.to_excel(filepath, index=False)
+        
+        add_log("未抓取到任何数据，已生成空Excel文件")
+        add_log(f"文件已保存到: {filepath}")
+        
         scheduled_task_status["running"] = False
         scheduled_task_status["last_run_time"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         scheduled_task_status["last_result"] = {
-            "success": False,
-            "count": 0
+            "success": True,
+            "count": 0,
+            "filepath": filepath,
+            "filename": filename
         }
+        add_log("=" * 50)
+        add_log("定时任务执行完成（无数据）")
+        add_log("=" * 50)
 
 @app.post("/api/schedule/create")
 async def create_schedule(req: ScheduleTaskRequest):
