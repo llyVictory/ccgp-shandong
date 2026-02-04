@@ -436,9 +436,11 @@ class Shandong(object):
             self._log(f"爬虫运行异常: {e}")
         finally:
             if self.browser:
-                self._log("Debug模式：不自动关闭浏览器，请手动关闭。")
-                # self.browser.close()
-                # self.browser = None
+                self._log("任务结束，5秒后自动关闭浏览器...")
+                time.sleep(5)
+                self.browser.close()
+                self.browser = None
+                self._log("✅ 浏览器已关闭")
             
         return all_data
 
