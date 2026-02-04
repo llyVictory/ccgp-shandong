@@ -569,14 +569,18 @@
 
             loadScheduleStatus(); // 初始化时加载
 
-            // 轮询定时任务日志
+            // 智能轮询定时任务日志（仅在任务运行时轮询）
             let logPollingInterval = null;
             let lastNotifiedTime = null;
+            let isTaskRunning = false;
 
             async function pollScheduledTaskLogs() {
                 try {
                     const resp = await fetch('/api/schedule/logs');
                     const data = await resp.json();
+
+                    // 检测任务是否在运行
+                    const taskRunning = data.status && data.status.running;
 
                     if (data.logs && data.logs.length > 0) {
                         // 显示日志控制台
@@ -599,14 +603,46 @@
                             const message = `今日定时任务（${data.status.last_run_time}）完成\n\n共抓取 ${result.count} 条记录\n\n请到以下路径查看数据：\n${result.filepath}`;
                             await showAlert('定时任务完成', message);
                         }
+
+                        // 任务完成，停止轮询
+                        stopLogPolling();
+                    }
+
+                    // 任务状态变化：从无到有，开始轮询
+                    if (taskRunning && !isTaskRunning) {
+                        isTaskRunning = true;
+                        startLogPolling();
+                    }
+                    // 任务状态变化：从有到无，停止轮询
+                    else if (!taskRunning && isTaskRunning) {
+                        isTaskRunning = false;
+                        stopLogPolling();
                     }
                 } catch (e) {
                     console.error('轮询定时任务日志失败:', e);
                 }
             }
 
-            // 每3秒轮询一次
-            logPollingInterval = setInterval(pollScheduledTaskLogs, 3000);
+            function startLogPolling() {
+                if (!logPollingInterval) {
+                    console.log('✓ 定时任务运行中，开始轮询日志（3秒间隔）');
+                    logPollingInterval = setInterval(pollScheduledTaskLogs, 3000);
+                }
+            }
+
+            function stopLogPolling() {
+                if (logPollingInterval) {
+                    console.log('✓ 定时任务结束，停止轮询节省资源');
+                    clearInterval(logPollingInterval);
+                    logPollingInterval = null;
+                    isTaskRunning = false;
+                }
+            }
+
+            // 每30秒检查一次任务状态（轻量级检查）
+            setInterval(pollScheduledTaskLogs, 30000);
+            // 初始检查一次
+            pollScheduledTaskLogs();
 
             quickTime.onchange = () => {
                 if (quickTime.value === 'custom') {
