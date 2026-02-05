@@ -13,6 +13,10 @@ import io
 import re
 import random
 
+# 加载 .env 配置
+from dotenv import load_dotenv
+load_dotenv()
+
 class BrowserEngine:
     def __init__(self, headless=True):
         self.headless = headless
@@ -42,8 +46,26 @@ class BrowserEngine:
         options.add_experimental_option("excludeSwitches", ["enable-automation"])
         options.add_experimental_option('useAutomationExtension', False)
 
+        # 从 .env 读取 Chrome 浏览器路径
+        chrome_binary = os.getenv("CHROME_BINARY_PATH", "").strip()
+        if chrome_binary and os.path.exists(chrome_binary):
+            options.binary_location = chrome_binary
+            self._log(f"使用自定义 Chrome 路径: {chrome_binary}")
+        
+        # 从 .env 读取 ChromeDriver 路径
+        chrome_driver_path = os.getenv("CHROME_DRIVER_PATH", "").strip()
+        
         self._log("正在启动 Chrome 浏览器...")
-        service = ChromeService(ChromeDriverManager().install())
+        
+        if chrome_driver_path and os.path.exists(chrome_driver_path):
+            # 使用手动配置的 ChromeDriver
+            self._log(f"使用自定义 ChromeDriver 路径: {chrome_driver_path}")
+            service = ChromeService(executable_path=chrome_driver_path)
+        else:
+            # 自动下载匹配版本的 ChromeDriver
+            self._log("使用 webdriver-manager 自动下载 ChromeDriver...")
+            service = ChromeService(ChromeDriverManager().install())
+        
         self.driver = webdriver.Chrome(service=service, options=options)
         
         self.driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {
