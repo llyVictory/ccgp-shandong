@@ -105,11 +105,42 @@ def run_spider_task(task_id: str, req: CrawlRequest):
         
         if data:
             df = pd.DataFrame(data)
-            # Define new column order
+            
+            # 时间过滤：只保留 昨天14:00 ~ 今天14:00 的数据
+            from datetime import datetime, timedelta
+            try:
+                now = datetime.now()
+                today_14 = now.replace(hour=14, minute=0, second=0, microsecond=0)
+                yesterday_14 = today_14 - timedelta(days=1)
+                
+                log_callback(f"时间过滤范围: {yesterday_14.strftime('%Y-%m-%d %H:%M:%S')} ~ {today_14.strftime('%Y-%m-%d %H:%M:%S')}")
+                log_callback(f"过滤前数据条数: {len(df)}")
+                
+                # 将 "发布具体时间" 转为 datetime 类型进行过滤
+                if "发布具体时间" in df.columns:
+                    # 过滤函数
+                    def is_in_range(dt_str):
+                        if not dt_str or pd.isna(dt_str):
+                            return True  # 空值保留
+                        try:
+                            dt = datetime.strptime(str(dt_str).strip(), "%Y-%m-%d %H:%M:%S")
+                            return yesterday_14 <= dt <= today_14
+                        except:
+                            return True  # 解析失败的保留
+                    
+                    df = df[df["发布具体时间"].apply(is_in_range)]
+                    log_callback(f"过滤后数据条数: {len(df)}")
+                else:
+                    log_callback("⚠️ 未找到'发布具体时间'列，跳过时间过滤")
+            except Exception as e:
+                log_callback(f"时间过滤出错: {e}")
+            
+            # Define new column order (添加 "发布具体时间" 列)
             cols = [
                 "序号", 
                 "地区", 
                 "标题",
+                "发布具体时间",  # 新增：精确到秒
                 "发布人",
                 "发布时间",
                 "子序号",
@@ -193,7 +224,7 @@ def run_scheduled_spider():
     spider = Shandong(use_proxy=False)
     spider.log_func = log_callback  # 设置日志回调
     
-    add_log("开始爬取今日数据（最多100页）...")
+    add_log("开始爬取数据（时间范围: 昨天14:00 ~ 今天14:00，最多100页）...")
     
     data = spider.run(
         max_pages=100,
@@ -204,21 +235,47 @@ def run_scheduled_spider():
         area=area
     )
     
-    # 定义列结构
+    # 定义列结构 (添加 "发布具体时间" 列)
     cols = [
-        "序号", "地区", "标题", "发布人", "发布时间",
+        "序号", "地区", "标题", "发布具体时间", "发布人", "发布时间",
         "子序号", "采购项目名称", "采购需求概况", "预算金额(万元)",
         "拟面向中小企业预留", "预计采购时间", "备注", "Link"
     ]
     
     # 生成文件名（带日期时间）
-    from datetime import datetime
+    from datetime import datetime, timedelta
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     filename = f"shandong_scheduled_{timestamp}.xlsx"
     filepath = os.path.join(download_path, filename)
     
     if data:
         df = pd.DataFrame(data)
+        
+        # 时间过滤：只保留 昨天14:00 ~ 今天14:00 的数据
+        try:
+            now = datetime.now()
+            today_14 = now.replace(hour=14, minute=0, second=0, microsecond=0)
+            yesterday_14 = today_14 - timedelta(days=1)
+            
+            add_log(f"时间过滤范围: {yesterday_14.strftime('%Y-%m-%d %H:%M:%S')} ~ {today_14.strftime('%Y-%m-%d %H:%M:%S')}")
+            add_log(f"过滤前数据条数: {len(df)}")
+            
+            if "发布具体时间" in df.columns:
+                def is_in_range(dt_str):
+                    if not dt_str or pd.isna(dt_str):
+                        return True
+                    try:
+                        dt = datetime.strptime(str(dt_str).strip(), "%Y-%m-%d %H:%M:%S")
+                        return yesterday_14 <= dt <= today_14
+                    except:
+                        return True
+                
+                df = df[df["发布具体时间"].apply(is_in_range)]
+                add_log(f"过滤后数据条数: {len(df)}")
+            else:
+                add_log("⚠️ 未找到'发布具体时间'列，跳过时间过滤")
+        except Exception as e:
+            add_log(f"时间过滤出错: {e}")
         
         for col in cols:
             if col not in df.columns:

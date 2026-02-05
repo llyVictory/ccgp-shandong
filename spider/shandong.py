@@ -310,6 +310,7 @@ class Shandong(object):
         parent_info = {
             "地区": record.get("areaName", ""),
             "标题": record.get("title", ""),
+            "发布具体时间": record.get("publishDatetime", ""),  # 精确到秒的发布时间
             "发布人": record.get("publisher", ""),  # 从详情页提取的发布人
             # "采购方式": record.get("buyKindCode", ""),  # 官方数据为空，已注释
             # "项目类型": record.get("projectType", ""),  # 官方数据为空，已注释

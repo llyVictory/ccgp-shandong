@@ -236,11 +236,11 @@ class BrowserEngine:
             except Exception as e:
                 self._log(f"标题输入出错: {e}")
 
-        # 3. 时间范围选择 - 点击网站上的快捷按钮
+        # 3. 时间范围选择
         # 映射关系: 我们的参数 -> 网站按钮文本
         # start_time 现在传的是 quickTimeRange 值: "0"=今日, "7"=近7天, "30"=近30天, "180"=近半年, "365"=近一年, "1095"=近三年
+        # 特殊处理: "0"(今日) 使用自定义时间范围: 昨天14:00 到 今天14:00
         time_range_map = {
-            "0": "今日",
             "7": "近7天",
             "30": "近30天",
             "180": "近半年",
@@ -248,9 +248,84 @@ class BrowserEngine:
             "1095": "近三年"
         }
         
-        # 如果 start_time 是我们的快捷代码，点击对应按钮
-        quick_btn_text = time_range_map.get(start_time, None)
-        if quick_btn_text:
+        # 特殊处理 "0" (今日) - 策略：先爬取"昨天+今天"两天数据，后期通过精确发布时间过滤
+        # 由于网站日期选择器只支持日期不支持时分秒，我们选择更宽的范围
+        if start_time == "0":
+            try:
+                from datetime import datetime, timedelta
+                now = datetime.now()
+                yesterday = (now - timedelta(days=1)).strftime("%Y-%m-%d")
+                today = now.strftime("%Y-%m-%d")
+                
+                self._log(f"时间范围策略: 爬取 {yesterday} ~ {today} 两天数据")
+                self._log("后续将通过精确发布时间过滤 (昨天14:00 ~ 今天14:00)")
+                
+                # 尝试点击"自定义"或找到日期输入框
+                # 1. 先尝试找并点击"自定义"按钮
+                all_divs = self.driver.find_elements(By.TAG_NAME, "div")
+                custom_clicked = False
+                for div in all_divs:
+                    try:
+                        div_text = div.text.strip()
+                        div_class = div.get_attribute("class") or ""
+                        if "item" in div_class and ("自定义" in div_text or "自选" in div_text):
+                            if "is_active" not in div_class:
+                                div.click()
+                                self._log("点击了'自定义'时间按钮")
+                                time.sleep(random.uniform(1, 2))
+                            custom_clicked = True
+                            break
+                    except:
+                        continue
+                
+                # 2. 查找日期输入框 (只填日期，不填时分秒)
+                date_inputs = []
+                all_inputs = self.driver.find_elements(By.TAG_NAME, "input")
+                for inp in all_inputs:
+                    ph = inp.get_attribute("placeholder") or ""
+                    if "开始" in ph or "起始" in ph:
+                        date_inputs.append(("start", inp))
+                    elif "结束" in ph or "截止" in ph:
+                        date_inputs.append(("end", inp))
+                
+                if len(date_inputs) < 2:
+                    range_inputs = self.driver.find_elements(By.CSS_SELECTOR, ".el-date-editor input, .el-range-input")
+                    if len(range_inputs) >= 2:
+                        date_inputs = [("start", range_inputs[0]), ("end", range_inputs[1])]
+                
+                if len(date_inputs) >= 2:
+                    for dtype, inp in date_inputs:
+                        if dtype == "start":
+                            inp.clear()
+                            inp.send_keys(yesterday)
+                            self._log(f"填入开始日期: {yesterday}")
+                        elif dtype == "end":
+                            inp.clear()
+                            inp.send_keys(today)
+                            self._log(f"填入结束日期: {today}")
+                    time.sleep(random.uniform(1, 2))
+                else:
+                    # Fallback: 点击"近7天"按钮（包含昨天和今天）
+                    self._log("⚠️ 未找到日期输入框，降级使用'近7天'按钮")
+                    for div in all_divs:
+                        try:
+                            div_text = div.text.strip()
+                            div_class = div.get_attribute("class") or ""
+                            if "item" in div_class and div_text == "近7天":
+                                if "is_active" not in div_class:
+                                    div.click()
+                                    self._log("点击了时间范围按钮: 近7天 (降级方案)")
+                                    time.sleep(random.uniform(1, 2))
+                                break
+                        except:
+                            continue
+                            
+            except Exception as e:
+                self._log(f"时间范围设置出错: {e}")
+        
+        # 如果 start_time 是其他快捷代码（非"0"），点击对应按钮
+        elif start_time in time_range_map:
+            quick_btn_text = time_range_map[start_time]
             try:
                 self._log(f"尝试点击时间范围: {quick_btn_text}")
                 # 查找时间范围按钮列表 - 通过文本内容查找所有 div
@@ -439,6 +514,7 @@ class BrowserEngine:
                     new_url = self.driver.current_url
                     detail_url = ""
                     publisher = ""  # 初始化发布人
+                    publish_datetime = ""  # 初始化发布具体时间
                     
                     if len(new_handles) > len(old_handles):
                         # 新标签页打开了
@@ -447,6 +523,23 @@ class BrowserEngine:
                         self._log("已打开详情页 Tab，模拟浏览停留...")
                         time.sleep(random.uniform(1, 2))
                         detail_url = self.driver.current_url
+                        
+                        # 提取发布具体时间 (格式: "发布时间：2026-02-05 10:46:14")
+                        publish_datetime = ""
+                        try:
+                            time_xpath = "/html/body/div/div[1]/div/div/div[1]/div[2]/span[1]"
+                            time_el = self.driver.find_element(By.XPATH, time_xpath)
+                            time_raw = time_el.text.strip()
+                            # 去掉 "发布时间：" 前缀
+                            if "发布时间：" in time_raw:
+                                publish_datetime = time_raw.replace("发布时间：", "").strip()
+                            elif "发布时间:" in time_raw:
+                                publish_datetime = time_raw.replace("发布时间:", "").strip()
+                            else:
+                                publish_datetime = time_raw
+                            self._log(f"提取到发布具体时间: {publish_datetime}")
+                        except Exception as e:
+                            self._log(f"提取发布具体时间失败: {e}")
                         
                         # 提取发布人
                         publisher = ""
@@ -506,6 +599,7 @@ class BrowserEngine:
                                 # "buyKindCode": buy_mode,  # 已注释
                                 # "projectType": prj_type,  # 已注释
                                 "date": pub_date,
+                                "publishDatetime": publish_datetime,  # 发布具体时间 (精确到秒)
                                 "url": detail_url,
                                 "publisher": publisher  # 发布人
                             }

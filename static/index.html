@@ -414,7 +414,7 @@
                         placeholder="例如: D:\spider_downloads">
                 </div>
                 <div style="color: #94a3b8; font-size: 0.85rem; margin-top: 0.5rem;">
-                    定时任务将每天固定时间执行，时间范围固定为"今日"，并自动保存到指定路径
+                    定时任务将每天固定时间执行，数据来源时间范围为"昨天14:00 ~ 今天14:00"，并自动保存到指定路径
                 </div>
             </div>
 
@@ -550,7 +550,7 @@
                         <div style="color: #22c55e; font-size: 0.95rem; line-height: 1.8;">
                             <div>✓ 定时任务已启用</div>
                             <div>✓ 每天 ${String(data.config.hour).padStart(2, '0')}:${String(data.config.minute).padStart(2, '0')} 执行</div>
-                            <div>✓ 爬取数据：省级、今日</div>
+                            <div>✓ 爬取数据：省级、昨天14:00~今天14:00</div>
                             <div>✓ 保存路径：${data.config.downloadPath}</div>
                         </div>
                     `;
