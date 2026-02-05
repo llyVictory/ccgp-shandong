@@ -75,12 +75,20 @@ class BrowserEngine:
                 })
             """
         })
-        self.driver.implicitly_wait(5)
+        
+        # 从 .env 读取超时配置
+        page_load_timeout = int(os.getenv("PAGE_LOAD_TIMEOUT", "60"))
+        implicit_wait = int(os.getenv("IMPLICIT_WAIT_TIMEOUT", "15"))
+        self.element_wait_timeout = int(os.getenv("ELEMENT_WAIT_TIMEOUT", "30"))
+        
+        # 设置超时
+        self.driver.set_page_load_timeout(page_load_timeout)
+        self.driver.implicitly_wait(implicit_wait)
+        self._log(f"超时设置: 页面加载={page_load_timeout}s, 隐式等待={implicit_wait}s, 元素等待={self.element_wait_timeout}s")
         self._log("浏览器启动成功")
         
         # 网络连接测试
         try:
-            self.driver.set_page_load_timeout(15)
             self.driver.get("https://www.baidu.com")
             self._log("网络连接正常")
         except Exception as net_err:
@@ -153,13 +161,15 @@ class BrowserEngine:
         url = "http://www.ccgp-shandong.gov.cn/xxgk"
         self._log(f"访问页面: {url}")
         self.driver.get(url)
-        # 等待加载
+        # 等待加载 (使用配置的超时时间)
+        timeout = getattr(self, 'element_wait_timeout', 30)
         try:
-            WebDriverWait(self.driver, 15).until(
+            WebDriverWait(self.driver, timeout).until(
                 EC.presence_of_element_located((By.CSS_SELECTOR, "div.second-search"))
             )
+            self._log("页面加载完成")
         except:
-            self._log("页面加载超时，可能网络慢或结构变更")
+            self._log(f"页面加载超时({timeout}s)，可能网络慢或结构变更")
 
     def perform_search(self, title="", start_time="", end_time="", area="370000"):
         # 把快捷代码转成可读文本用于日志显示
