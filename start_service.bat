@@ -20,13 +20,13 @@ echo    Shandong Procurement Spider Service
 echo ==========================================
 echo.
 echo [INFO] 
-echo  1. Browser will open http://localhost:8080 automatically.
+echo  1. Browser will open http://localhost:8090 automatically.
 echo  2. To stop the service, simply CLOSE THIS WINDOW.
 echo.
 
 :: Auto open browser
 timeout /t 2 /nobreak >nul
-start http://localhost:8080
+start http://localhost:8090
 
 :: Start Python service
 echo [SYSTEM] Starting main program...
