@@ -149,7 +149,7 @@ def run_spider_task(task_id: str, req: CrawlRequest):
                 "拟面向中小企业预留",
                 "预计采购时间",
                 "备注",
-                "Link" 
+                "意向发布地址" 
             ]
             
             # Ensure all columns exist
@@ -238,13 +238,13 @@ def run_scheduled_spider():
     cols = [
         "序号", "地区", "标题", "发布具体时间", "发布人",
         "子序号", "采购项目名称", "采购需求概况", "预算金额(万元)",
-        "拟面向中小企业预留", "预计采购时间", "备注", "Link"
+        "拟面向中小企业预留", "预计采购时间", "备注", "意向发布地址"
     ]
     
-    # 生成文件名（带日期时间）
+    # 生成文件名（按需求格式：省本级采购意向（20260206）.xlsx）
     from datetime import datetime, timedelta
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"shandong_scheduled_{timestamp}.xlsx"
+    today_str = datetime.now().strftime("%Y%m%d")
+    filename = f"省本级采购意向（{today_str}）.xlsx"
     filepath = os.path.join(download_path, filename)
     
     if data:
