@@ -315,7 +315,7 @@ class Shandong(object):
             # "采购方式": record.get("buyKindCode", ""),  # 官方数据为空，已注释
             # "项目类型": record.get("projectType", ""),  # 官方数据为空，已注释
             "发布时间": record.get("date", ""),
-            "Link": full_link
+            "意向发布地址": full_link
         }
 
         if child_rows:
@@ -450,7 +450,7 @@ if __name__ == "__main__":
     data = s.run(max_pages=2) # Test run
     df = pd.DataFrame(data)
     # Reorder columns
-    cols = ["序号", "分类1", "分类2", "地市", "客户名称", "项目名称", "金额", "预计时间", "link"]
+    cols = ["序号", "分类1", "分类2", "地市", "客户名称", "项目名称", "金额", "预计时间", "意向发布地址"]
     # Adjust 序号 to be global
     df['序号'] = range(1, len(df) + 1)
     df = df[cols]
