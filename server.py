@@ -337,8 +337,16 @@ async def create_schedule(req: ScheduleTaskRequest):
     scheduler.remove_all_jobs()
     
     # 添加新任务
-    trigger = CronTrigger(hour=req.hour, minute=req.minute)
-    scheduler.add_job(run_scheduled_spider, trigger, id='daily_spider')
+    # misfire_grace_time=3600 表示如果错过了时间点，在一小时内探测到仍会补执行
+    # coalesce=True 表示如果错过了多次，只补执行一次
+    trigger = CronTrigger(day_of_week='mon-sun', hour=req.hour, minute=req.minute)
+    scheduler.add_job(
+        run_scheduled_spider, 
+        trigger, 
+        id='daily_spider',
+        misfire_grace_time=3600,
+        coalesce=True
+    )
     
     return {
         "success": True,
