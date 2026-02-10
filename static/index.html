@@ -323,25 +323,8 @@
 </head>
 
 <body>
-    <!-- 自定义对话框 -->
-    <div id="customModal"
-        style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.7); z-index: 9999; backdrop-filter: blur(4px);">
-        <div
-            style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); padding: 2rem; border-radius: 1rem; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5); min-width: 400px; border: 1px solid #334155;">
-            <div id="modalTitle" style="font-size: 1.25rem; font-weight: 600; color: #f1f5f9; margin-bottom: 1rem;">
-            </div>
-            <div id="modalMessage" style="color: #94a3b8; margin-bottom: 1.5rem; line-height: 1.6;"></div>
-            <div id="modalButtons" style="display: flex; gap: 0.75rem; justify-content: flex-end;"></div>
-        </div>
-    </div>
-
     <div class="container">
         <h1>山东政采爬虫控制台</h1>
-        <div class="form-group">
-            <label>搜索关键词 (待开放)</label>
-            <input type="text" id="keyword" placeholder="例如：林地、荒漠化..." disabled
-                style="background: #1e293b; cursor: not-allowed; opacity: 0.6;">
-        </div>
         <div class="form-group">
             <label>省级 / 市区县</label>
             <select id="area">
@@ -498,38 +481,6 @@
             const logContent = document.getElementById('logContent');
             const logCount = document.getElementById('logCount');
 
-            // 自定义对话框函数
-            function showAlert(title, message) {
-                return new Promise((resolve) => {
-                    const modal = document.getElementById('customModal');
-                    document.getElementById('modalTitle').textContent = title;
-                    document.getElementById('modalMessage').textContent = message;
-                    const btnsHtml = `<button onclick="closeModal(); window.modalResolve(true);" style="padding: 0.65rem 1.5rem; background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); border: none; color: white; border-radius: 0.5rem; cursor: pointer; font-weight: 500;">确定</button>`;
-                    document.getElementById('modalButtons').innerHTML = btnsHtml;
-                    modal.style.display = 'block';
-                    window.modalResolve = resolve;
-                });
-            }
-
-            function showConfirm(title, message) {
-                return new Promise((resolve) => {
-                    const modal = document.getElementById('customModal');
-                    document.getElementById('modalTitle').textContent = title;
-                    document.getElementById('modalMessage').textContent = message;
-                    const btnsHtml = `
-                        <button onclick="closeModal(); window.modalResolve(false);" style="padding: 0.65rem 1.5rem; background: #475569; border: none; color: white; border-radius: 0.5rem; cursor: pointer; font-weight: 500;">取消</button>
-                        <button onclick="closeModal(); window.modalResolve(true);" style="padding: 0.65rem 1.5rem; background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); border: none; color: white; border-radius: 0.5rem; cursor: pointer; font-weight: 500;">确定</button>
-                    `;
-                    document.getElementById('modalButtons').innerHTML = btnsHtml;
-                    modal.style.display = 'block';
-                    window.modalResolve = resolve;
-                });
-            }
-
-            function closeModal() {
-                document.getElementById('customModal').style.display = 'none';
-            }
-
             // 页面加载时检查定时任务状态
             async function loadScheduleStatus() {
                 try {
@@ -585,6 +536,17 @@
 
                 document.getElementById('startTime').value = start.toISOString().split('T')[0];
                 document.getElementById('endTime').value = end.toISOString().split('T')[0];
+            }
+
+            // 简单的状态提示辅助函数
+            function showStatusMessage(msg, type = 'running') {
+                statusDiv.style.display = 'block';
+                statusDiv.className = type;
+                statusDiv.innerText = msg;
+                // 3秒后自动隐藏
+                setTimeout(() => {
+                    statusDiv.style.display = 'none';
+                }, 3000);
             }
 
             startBtn.onclick = async () => {
@@ -683,7 +645,7 @@
                 const area = document.getElementById('area').value;
 
                 if (!downloadPath) {
-                    await showAlert('提示', '请输入下载保存路径');
+                    showStatusMessage('提示: 请输入下载保存路径', 'failed');
                     return;
                 }
 
@@ -696,33 +658,31 @@
                     const data = await resp.json();
 
                     if (data.success) {
-                        await showAlert('成功', data.message);
+                        showStatusMessage('定时任务创建成功!', 'completed');
                         loadScheduleStatus(); // 刷新状态
                     } else {
-                        await showAlert('失败', '创建失败');
+                        showStatusMessage('创建定时任务失败', 'failed');
                     }
                 } catch (e) {
-                    await showAlert('错误', '创建/更新定时任务失败: ' + e);
+                    showStatusMessage('创建定时任务错误: ' + e, 'failed');
                 }
             };
 
             // 删除定时任务
             deleteScheduleBtn.onclick = async () => {
-                const confirmed = await showConfirm('删除定时任务', '确定要删除定时任务吗？');
-                if (!confirmed) return;
-
+                // 直接删除，不再确认
                 try {
                     const resp = await fetch('/api/schedule/delete', { method: 'DELETE' });
                     const data = await resp.json();
 
                     if (data.success) {
-                        await showAlert('成功', data.message);
+                        showStatusMessage('定时任务已删除', 'completed');
                         loadScheduleStatus(); // 刷新状态
                     } else {
-                        await showAlert('失败', '删除失败');
+                        showStatusMessage('删除失败', 'failed');
                     }
                 } catch (e) {
-                    await showAlert('错误', '删除定时任务失败: ' + e);
+                    showStatusMessage('删除错误: ' + e, 'failed');
                 }
             };
 
