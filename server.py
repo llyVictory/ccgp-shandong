@@ -10,6 +10,129 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 import json
 import shutil
+from openpyxl.styles import Alignment, Font
+import math
+
+def calculate_row_height(row_values, col_width_map, base_height=18):
+    """
+    根据每一列的内容长度和列宽，估算该行需要的最大高度。
+    DingTalk 预览有时不会自动计算 wrap_text 的高度，需强制设置。
+    """
+    max_lines = 1
+    
+    # 字体宽度估算系数 (基于微软雅黑 10号)
+    # 中文/全角字符宽度约为 2.0，英文/数字约为 1.1
+    char_width_cn = 2.0
+    char_width_en = 1.1
+    
+    for col_idx, val in enumerate(row_values, 1):
+        if not val:
+            continue
+            
+        # 获取当前列的设定宽度
+        col_width = col_width_map.get(col_idx, 10) # 默认宽 10
+        if col_width == 0: continue
+        
+        # 将内容转为字符串并计算预估总宽度
+        text = str(val)
+        estimated_width = 0
+        for char in text:
+            if '\u4e00' <= char <= '\u9fff': # 简单判断中文
+                estimated_width += char_width_cn
+            else:
+                estimated_width += char_width_en
+        
+        # 加上一点 padding (左右各一点)
+        estimated_width += 2 
+        
+        # 计算需要多少行
+        lines = math.ceil(estimated_width / col_width)
+        if lines > max_lines:
+            max_lines = lines
+            
+    # 设置上限，防止单行过高 (例如最多 10 行)
+    if max_lines > 15:
+        max_lines = 15
+        
+    return max_lines * base_height
+
+def save_df_to_excel_with_style(df, filepath):
+    """
+    保存 DataFrame 为 Excel，并设置手机端友好样式：
+    1. 自动换行
+    2. 顶端对齐
+    3. 合理列宽适配手机屏幕
+    4. 显式设置行高 (适配 DingTalk)
+    """
+    if df is None:
+        return
+        
+    # 如果 DataFrame 为空，也建立一个空的带表头的文件
+    if df.empty:
+        df.to_excel(filepath, index=False)
+        return
+
+    with pd.ExcelWriter(filepath, engine='openpyxl') as writer:
+        df.to_excel(writer, index=False, sheet_name='意向数据')
+        workbook = writer.book
+        worksheet = writer.sheets['意向数据']
+        
+        # 定义对齐样式：自动换行，水平/垂直都居中
+        wrap_alignment = Alignment(wrap_text=True, vertical='center', horizontal='center')
+        link_alignment = Alignment(wrap_text=True, vertical='center', horizontal='center')
+        header_alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+        
+        # 预设列宽（极致优化：确保钉钉一打开，所有列都能通过滑动看到，无需手动调宽）
+        # 核心逻辑：固定非重要列宽度，给长文本列预留足够宽度以触发自动换行，但不至于溢出屏幕太多
+        col_width_map = {
+            1: 6,   # 序号 
+            2: 12,  # 地区 
+            3: 25,  # 标题 (可能较长，给25配合换行)
+            4: 20,  # 发布具体时间 (固定长度)
+            5: 18,  # 发布人
+            6: 6,   # 子序号
+            7: 30,  # 采购项目名称 (核心，给30)
+            8: 60,  # 采购需求概况 (允许较长，但必须换行)
+            9: 15,  # 预算金额(万元)
+            10: 20, # 拟面向中小企业预留
+            11: 18, # 预计采购时间
+            12: 20, # 备注
+            13: 15, # 意向发布地址 (不要求全显)
+        }
+        
+        # 应用列宽
+        for col_idx, width in col_width_map.items():
+            if col_idx <= len(df.columns):
+                col_letter = worksheet.cell(row=1, column=col_idx).column_letter
+                worksheet.column_dimensions[col_letter].width = width
+            
+        
+        # 应用对齐样式和字体
+        # [用户配置] 内容行固定高度，您可以在此处直接修改数字来调节松紧
+        FIXED_CONTENT_HEIGHT = 50 
+
+        for row_idx, row in enumerate(worksheet.iter_rows(min_row=1), 1):
+            if row_idx == 1:
+                # 表头：固定高度 30
+                worksheet.row_dimensions[row_idx].height = 30
+            else:
+                # 内容行：使用固定高度 (写死)
+                worksheet.row_dimensions[row_idx].height = FIXED_CONTENT_HEIGHT
+
+            for col_idx, cell in enumerate(row, 1):
+                if row_idx == 1:
+                    # 表头：加粗居中，确保标题不被遮挡
+                    cell.alignment = header_alignment
+                    cell.font = Font(bold=True, size=11, name='微软雅黑')
+                else:
+                    # 内容：全部强制自动换行 + 顶端对齐
+                    cell.alignment = wrap_alignment
+                    cell.font = Font(size=10, name='微软雅黑')
+        
+        # 添加筛选器
+        worksheet.auto_filter.ref = worksheet.dimensions
+        # 移除冻结窗格 (用户要求)
+        # worksheet.freeze_panes = "C2" 
 
 app = FastAPI()
 
@@ -165,7 +288,8 @@ def run_spider_task(task_id: str, req: CrawlRequest):
             
             filename = f"shandong_data_{task_id}.xlsx"
             filepath = os.path.join("static", filename)
-            df.to_excel(filepath, index=False)
+            # 使用带样式的保存函数
+            save_df_to_excel_with_style(df, filepath)
             
             tasks[task_id]["status"] = "completed"
             tasks[task_id]["file"] = filepath
@@ -283,7 +407,8 @@ def run_scheduled_spider():
         df = df[cols]
         df['序号'] = range(1, len(df) + 1)
         
-        df.to_excel(filepath, index=False)
+        # 使用带样式的保存函数
+        save_df_to_excel_with_style(df, filepath)
         add_log(f"数据已保存到: {filepath}")
         add_log(f"共抓取 {len(df)} 条记录")
         
@@ -300,9 +425,9 @@ def run_scheduled_spider():
         add_log("定时任务执行完成！")
         add_log("=" * 50)
     else:
-        # 创建空的Excel文件
+        # 创建空的Excel文件（带样式和表头）
         df = pd.DataFrame(columns=cols)
-        df.to_excel(filepath, index=False)
+        save_df_to_excel_with_style(df, filepath)
         
         add_log("未抓取到任何数据，已生成空Excel文件")
         add_log(f"文件已保存到: {filepath}")
