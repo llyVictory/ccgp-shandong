@@ -516,5 +516,25 @@ async def get_schedule_logs():
 
 
 if __name__ == "__main__":
+    # --- Windows Console Optimization (Fix for "Enter" key pause issue) ---
+    try:
+        import ctypes
+        kernel32 = ctypes.windll.kernel32
+        # Standard input handle
+        hLineEdit = kernel32.GetStdHandle(-10) 
+        
+        # Get current mode
+        mode = ctypes.c_ulong()
+        kernel32.GetConsoleMode(hLineEdit, ctypes.byref(mode))
+        
+        # Remove ENABLE_QUICK_EDIT_MODE (0x0040)
+        # 0x0080 is ENABLE_EXTENDED_FLAGS (required when turning off QuickEdit)
+        new_mode = (mode.value & ~0x0040) | 0x0080
+        kernel32.SetConsoleMode(hLineEdit, new_mode)
+        print("Windows Console: Quick Edit Mode disabled successfully.")
+    except Exception as e:
+        print(f"Windows Console Optimization Failed: {e}")
+    # ----------------------------------------------------------------------
+
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8090)
