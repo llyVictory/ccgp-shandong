@@ -348,14 +348,18 @@
             </select>
         </div>
         <div class="form-group">
-            <!-- 时间范围固定为"今日" -->
-            <div class="form-group" style="display: none;">
-                <label>快速时间范围</label>
+            <div class="form-group">
+                <label>快速时间范围 (留空则默认 昨天14h-今天14h)</label>
                 <select id="quickTime">
-                    <option value="0" selected>今日</option>
+                    <option value="" selected>默认 (昨天14:00 - 今日14:00)</option>
+                    <option value="0">今日 (00:00 - 现在)</option>
+                    <option value="7">近7天</option>
+                    <option value="30">近30天</option>
+                    <option value="custom">自定义日期范围</option>
                 </select>
             </div>
-            <div id="customTimeRange" style="display: none; gap: 1rem; grid-template-columns: 1fr 1fr;">
+            <div id="customTimeRange"
+                style="display: none; gap: 1rem; grid-template-columns: 1fr 1fr; margin-bottom: 1.5rem;">
                 <div class="form-group">
                     <label>开始日期</label>
                     <input type="date" id="startTime">
@@ -365,10 +369,6 @@
                     <input type="date" id="endTime">
                 </div>
             </div>
-            <!-- <div
-                style="padding: 0.75rem; background: rgba(59, 130, 246, 0.1); border-left: 3px solid #3b82f6; border-radius: 0.5rem; margin-bottom: 1rem;">
-                <div style="color: #60a5fa; font-size: 0.9rem; font-weight: 500;">爬取范围：今日数据（最多100页）</div>
-            </div> -->
 
             <!-- 隐藏的爬取页数配置（固定值） -->
             <input type="hidden" id="startPage" value="1">
@@ -396,8 +396,23 @@
                     <input type="text" id="downloadPath" value="D:\spider_downloads"
                         placeholder="例如: D:\spider_downloads">
                 </div>
-                <div style="color: #94a3b8; font-size: 0.85rem; margin-top: 0.5rem;">
-                    定时任务将每天固定时间执行，数据来源时间范围为"昨天14:00 ~ 今天14:00"，并自动保存到指定路径
+                <!-- 新增：定时任务时间范围配置 -->
+                <div class="form-group"
+                    style="padding: 1rem; background: rgba(255, 255, 255, 0.03); border-radius: 0.5rem; border: 1px dashed rgba(255, 255, 255, 0.1);">
+                    <label style="color: #818cf8; font-size: 0.9rem;">定时任务爬取时间范围</label>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 0.5rem;">
+                        <div>
+                            <label style="font-size: 0.8rem;">开始日期 (留空则相对执行时间-1天)</label>
+                            <input type="date" id="scheduleStartTime" style="padding: 0.6rem; font-size: 0.9rem;">
+                        </div>
+                        <div>
+                            <label style="font-size: 0.8rem;">结束日期 (留空则相对执行时间当日)</label>
+                            <input type="date" id="scheduleEndTime" style="padding: 0.6rem; font-size: 0.9rem;">
+                        </div>
+                    </div>
+                    <div style="color: #64748b; font-size: 0.75rem; margin-top: 0.5rem;">
+                        * 提示：如果两个日期都留空，将自动爬取 "昨天 14:00 - 今天 14:00" 的数据。
+                    </div>
                 </div>
             </div>
 
@@ -501,7 +516,7 @@
                         <div style="color: #22c55e; font-size: 0.95rem; line-height: 1.8;">
                             <div>✓ 定时任务已启用</div>
                             <div>✓ 每天 ${String(data.config.hour).padStart(2, '0')}:${String(data.config.minute).padStart(2, '0')} 执行</div>
-                            <div>✓ 爬取数据：省级、昨天14:00~今天14:00</div>
+                            <div>✓ 时间范围：${data.config.startTime || '默认 (昨天14h-今天14h)'} ${data.config.endTime ? '至 ' + data.config.endTime : ''}</div>
                             <div>✓ 保存路径：${data.config.downloadPath}</div>
                         </div>
                     `;
@@ -510,6 +525,8 @@
                         document.getElementById('scheduleHour').value = data.config.hour;
                         document.getElementById('scheduleMinute').value = String(data.config.minute).padStart(2, '0');
                         document.getElementById('downloadPath').value = data.config.downloadPath;
+                        if (data.config.startTime) document.getElementById('scheduleStartTime').value = data.config.startTime;
+                        if (data.config.endTime) document.getElementById('scheduleEndTime').value = data.config.endTime;
                     } else {
                         document.getElementById('scheduleStatus').style.display = 'none';
                     }
@@ -569,7 +586,7 @@
                     endTime: endTime,
                     startPage: parseInt(document.getElementById('startPage').value),
                     maxPages: parseInt(document.getElementById('maxPages').value),
-                    title: document.getElementById('keyword').value,
+                    title: document.getElementById('title') ? document.getElementById('title').value : "",
                     useProxy: document.getElementById('useProxy').checked
                 };
 
@@ -643,6 +660,8 @@
                 const minute = parseInt(document.getElementById('scheduleMinute').value);
                 const downloadPath = document.getElementById('downloadPath').value.trim();
                 const area = document.getElementById('area').value;
+                const startTime = document.getElementById('scheduleStartTime').value;
+                const endTime = document.getElementById('scheduleEndTime').value;
 
                 if (!downloadPath) {
                     showStatusMessage('提示: 请输入下载保存路径', 'failed');
@@ -653,7 +672,7 @@
                     const resp = await fetch('/api/schedule/create', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ area, hour, minute, downloadPath })
+                        body: JSON.stringify({ area, hour, minute, downloadPath, startTime, endTime })
                     });
                     const data = await resp.json();
 

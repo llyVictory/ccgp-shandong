@@ -175,6 +175,8 @@ class ScheduleTaskRequest(BaseModel):
     hour: int = 0  # 执行时间（小时）
     minute: int = 0  # 执行时间（分钟）
     downloadPath: str = "D:\\spider_downloads"  # 下载路径
+    startTime: str = "" # 爬取起始时间
+    endTime: str = ""   # 爬取结束时间
 
 @app.get("/")
 async def read_index():
@@ -229,14 +231,38 @@ def run_spider_task(task_id: str, req: CrawlRequest):
         if data:
             df = pd.DataFrame(data)
             
-            # 时间过滤：只保留 昨天14:00 ~ 今天14:00 的数据
+            # 时间过滤：优先使用用户选择的时间，否则默认 昨天14:00 ~ 今天14:00
             from datetime import datetime, timedelta
             try:
-                now = datetime.now()
-                today_14 = now.replace(hour=14, minute=0, second=0, microsecond=0)
-                yesterday_14 = today_14 - timedelta(days=1)
+                # 解析时间设置
+                f_start = None
+                f_end = None
                 
-                log_callback(f"时间过滤范围: {yesterday_14.strftime('%Y-%m-%d %H:%M:%S')} ~ {today_14.strftime('%Y-%m-%d %H:%M:%S')}")
+                if req.startTime and req.startTime != "0": # "0" 是快捷键代码，由爬虫处理
+                    try:
+                        # 兼容 YYYY-MM-DD 和 YYYY-MM-DD HH:MM:SS
+                        s_str = req.startTime.strip()
+                        if len(s_str) == 10: s_str += " 00:00:00"
+                        f_start = datetime.strptime(s_str, "%Y-%m-%d %H:%M:%S")
+                    except: pass
+                
+                if req.endTime:
+                    try:
+                        e_str = req.endTime.strip()
+                        if len(e_str) == 10: e_str += " 23:59:59"
+                        f_end = datetime.strptime(e_str, "%Y-%m-%d %H:%M:%S")
+                    except: pass
+                
+                # 如果用户没给完整的时间段，使用默认的 昨天14:00 ~ 今日14:00
+                if not f_start or not f_end:
+                    now = datetime.now()
+                    today_14 = now.replace(hour=14, minute=0, second=0, microsecond=0)
+                    yesterday_14 = today_14 - timedelta(days=1)
+                    
+                    if not f_start: f_start = yesterday_14
+                    if not f_end: f_end = today_14
+                
+                log_callback(f"时间过滤范围: {f_start.strftime('%Y-%m-%d %H:%M:%S')} ~ {f_end.strftime('%Y-%m-%d %H:%M:%S')}")
                 log_callback(f"过滤前数据条数: {len(df)}")
                 
                 # 将 "发布具体时间" 转为 datetime 类型进行过滤
@@ -247,7 +273,7 @@ def run_spider_task(task_id: str, req: CrawlRequest):
                             return True  # 空值保留
                         try:
                             dt = datetime.strptime(str(dt_str).strip(), "%Y-%m-%d %H:%M:%S")
-                            return yesterday_14 <= dt <= today_14
+                            return f_start <= dt <= f_end
                         except:
                             return True  # 解析失败的保留
                     
@@ -334,6 +360,8 @@ def run_scheduled_spider():
     
     area = config.get("area", "370000")
     download_path = config.get("downloadPath", "D:\\spider_downloads")
+    start_time_cfg = config.get("startTime", "0")
+    end_time_cfg = config.get("endTime", "")
     
     # 确保下载目录存在
     os.makedirs(download_path, exist_ok=True)
@@ -343,18 +371,18 @@ def run_scheduled_spider():
     def log_callback(msg):
         add_log(msg)
     
-    # 执行爬取（今日数据，100页）
+    # 执行爬取
     spider = Shandong(use_proxy=False)
     spider.log_func = log_callback  # 设置日志回调
     
-    add_log("开始爬取数据（时间范围: 昨天14:00 ~ 今天14:00，最多100页）...")
+    add_log(f"开始爬取数据 (时间参数: {start_time_cfg} ~ {end_time_cfg}, 最多100页)...")
     
     data = spider.run(
         max_pages=100,
         start_page=1,
         title="",
-        start_time="0",  # 今日
-        end_time="",
+        start_time=start_time_cfg, 
+        end_time=end_time_cfg,
         area=area
     )
     
@@ -374,13 +402,33 @@ def run_scheduled_spider():
     if data:
         df = pd.DataFrame(data)
         
-        # 时间过滤：只保留 昨天14:00 ~ 今天14:00 的数据
+        # 时间过滤：优先使用配置的时间，否则默认 昨天14:00 ~ 今天14:00
         try:
-            now = datetime.now()
-            today_14 = now.replace(hour=14, minute=0, second=0, microsecond=0)
-            yesterday_14 = today_14 - timedelta(days=1)
+            f_start = None
+            f_end = None
             
-            add_log(f"时间过滤范围: {yesterday_14.strftime('%Y-%m-%d %H:%M:%S')} ~ {today_14.strftime('%Y-%m-%d %H:%M:%S')}")
+            if start_time_cfg and start_time_cfg != "0":
+                try:
+                    s_str = start_time_cfg.strip()
+                    if len(s_str) == 10: s_str += " 00:00:00"
+                    f_start = datetime.strptime(s_str, "%Y-%m-%d %H:%M:%S")
+                except: pass
+            
+            if end_time_cfg:
+                try:
+                    e_str = end_time_cfg.strip()
+                    if len(e_str) == 10: e_str += " 23:59:59"
+                    f_end = datetime.strptime(e_str, "%Y-%m-%d %H:%M:%S")
+                except: pass
+
+            if not f_start or not f_end:
+                now = datetime.now()
+                today_14 = now.replace(hour=14, minute=0, second=0, microsecond=0)
+                yesterday_14 = today_14 - timedelta(days=1)
+                if not f_start: f_start = yesterday_14
+                if not f_end: f_end = today_14
+            
+            add_log(f"时间过滤范围: {f_start.strftime('%Y-%m-%d %H:%M:%S')} ~ {f_end.strftime('%Y-%m-%d %H:%M:%S')}")
             add_log(f"过滤前数据条数: {len(df)}")
             
             if "发布具体时间" in df.columns:
@@ -389,7 +437,7 @@ def run_scheduled_spider():
                         return True
                     try:
                         dt = datetime.strptime(str(dt_str).strip(), "%Y-%m-%d %H:%M:%S")
-                        return yesterday_14 <= dt <= today_14
+                        return f_start <= dt <= f_end
                     except:
                         return True
                 
@@ -452,7 +500,9 @@ async def create_schedule(req: ScheduleTaskRequest):
         "area": req.area,
         "hour": req.hour,
         "minute": req.minute,
-        "downloadPath": req.downloadPath
+        "downloadPath": req.downloadPath,
+        "startTime": req.startTime,
+        "endTime": req.endTime
     }
     
     with open(SCHEDULE_CONFIG_FILE, 'w', encoding='utf-8') as f:
