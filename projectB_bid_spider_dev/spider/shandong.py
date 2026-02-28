@@ -366,27 +366,56 @@ class Shandong(object):
             current_page_idx = start_page
             
             while pages_crawled < max_pages:
-                self._log(f"--- 正在处理第 {current_page_idx} 页 (已抓取 {pages_crawled}/{max_pages} 页) ---")
+                self._log(f"--- 正在处理第 {current_page_idx} 页 ---")
                 
-                # 提取列表 (包含重试辅助逻辑)
+                # 提取列表 (无限重试机制：空白数据一定是验证码问题)
                 records = self.browser.extract_records()
                 
                 rescue_attempts = 0
-                max_rescue_attempts = 5
+                max_rescue_attempts = 5  # ✅ 最多重试5次验证码,避免无限循环
+                
                 while not records and rescue_attempts < max_rescue_attempts:
                     rescue_attempts += 1
-                    self._log(f"第 {current_page_idx} 页未检测到数据，重试救援 (第 {rescue_attempts} 次)...")
-                    # 重新触发搜索并回到当前页
+                    self._log(f"第 {current_page_idx} 页未检测到数据，执行验证码重试 (第 {rescue_attempts} 次)...")
+                    
+                    # 重新执行全量搜索逻辑 (Tab -> 参数 -> 刷新验证码 -> 识别 -> 查询)
                     self.browser.perform_search(title, start_time, end_time, area)
-                    if current_page_idx > 1:
+                    
+                    # 检查当前页码，只有不在目标页时才跳转
+                    current_page_in_browser = self.browser.get_current_page()
+                    if current_page_in_browser != current_page_idx:
+                        self._log(f"当前页码 {current_page_in_browser}，需要跳转到第 {current_page_idx} 页...")
                         self.browser.jump_to_page(current_page_idx)
+                    else:
+                        self._log(f"当前已在第 {current_page_idx} 页，无需跳转")
+                    
+                    # 再次尝试提取
                     records = self.browser.extract_records()
                 
                 if not records:
-                    self._log(f"第 {current_page_idx} 页最终未获取到记录，停止或跳过")
-                    if current_page_idx == start_page: break # 首页没数据直接闪人
-                else:
-                    # 并发处理详情页
+                    self._log(f"⚠️ 已重试 {max_rescue_attempts} 次验证码仍无数据")
+                    
+                    # 🔥 关键优化：第一页无数据直接退出,认为今日无数据
+                    if current_page_idx == start_page:
+                        self._log(f"✅ 第一页在 {max_rescue_attempts} 次重试后仍无数据，判定为今日无数据，停止爬取")
+                        break
+                    
+                    # 非第一页则跳过继续
+                    self._log(f"跳过第 {current_page_idx} 页，继续下一页")
+                    pages_crawled += 1
+                    current_page_idx += 1
+                    if not self.browser.next_page():
+                        self._log("无法点击下一页，停止爬取")
+                        break
+                    continue
+                
+                # 详情页处理 (保持并发)
+                # 注意：BrowserEngine 已经提取了 ID，我们继续用 requests 并发获取详情
+                # 为了保持 session 状态 (Cookies)，我们可以尝试让 requests 使用 browser 的 cookies
+                # 但目前详情页 API 似乎不需要 cookie 或者不敏感？
+                # 如果需要，可以: s = requests.Session(); s.cookies.update(...)
+                
+                if records:
                     with ThreadPoolExecutor(max_workers=2) as executor:
                         futures = [executor.submit(self.process_item, rec) for rec in records]
                         for f in futures:
@@ -397,10 +426,11 @@ class Shandong(object):
                 if pages_crawled >= max_pages:
                     break
                 
-                # 下一页
+                # 翻页
                 if not self.browser.next_page():
-                    self._log("无法点击下一页，停止")
+                    self._log("无法点击下一页，停止爬取")
                     break
+                    
                 current_page_idx += 1
                 
         except Exception as e:
