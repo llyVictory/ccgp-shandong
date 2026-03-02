@@ -809,6 +809,8 @@ class BrowserEngine:
         检查页面是否弹出错误消息（如验证码错误）
         """
         try:
+            # 临时将隐式等待缩短到很小，因为错误消息通常是立刻弹出的，不需要死等 15 秒
+            self.driver.implicitly_wait(2)
             # 常见 Element UI 消息选择器
             msgs = self.driver.find_elements(By.CSS_SELECTOR, ".el-message--warning, .el-message--error")
             for msg in msgs:
@@ -820,6 +822,11 @@ class BrowserEngine:
             return None
         except:
             return None
+        finally:
+            # 恢复隐式等待（读取环境变量或默认15秒）
+            import os
+            implicit_wait = int(os.getenv("IMPLICIT_WAIT_TIMEOUT", "15"))
+            self.driver.implicitly_wait(implicit_wait)
 
     def get_result_count(self):
         """

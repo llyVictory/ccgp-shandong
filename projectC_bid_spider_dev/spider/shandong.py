@@ -29,6 +29,7 @@ class Shandong(object):
             }
         
         self.log_func = None
+        self.browser = None
         
         # 仅在启用代理时检查状态
         if self.use_proxy:
@@ -349,16 +350,24 @@ class Shandong(object):
         self.browser = BrowserEngine(headless=False)
         self.browser.logger = self.log_func
         
-        # 1. 读取学校清单
-        monitor_file = r"d:\LLYWORK\spider\bid_spider\projectB_bid_spider_dev\monitor_schools.xlsx"
+        # 1. 预加载学校清单（用于本地精筛）
+        monitor_file = r"d:\LLYWORK\spider\bid_spider\projectC_bid_spider_dev\monitor_schools.xlsx"
         if not os.path.exists(monitor_file):
             self._log(f"❌ 未找到监控清单文件: {monitor_file}")
             return []
             
         try:
             df_schools = pd.read_excel(monitor_file)
-            schools = df_schools.to_dict('records')
-            self._log(f"成功加载监控清单，共 {len(schools)} 所学校")
+            # 建立 {学校名称: 类型} 映射，方便后续注入
+            school_type_map = {}
+            for _, row in df_schools.iterrows():
+                name = str(row.get('学校名称', '')).strip()
+                stype = str(row.get('类型', '')).strip()
+                if name:
+                    school_type_map[name] = stype
+            
+            target_list = list(school_type_map.keys())
+            self._log(f"成功加载监控清单，共 {len(target_list)} 所目标院校")
         except Exception as e:
             self._log(f"❌ 读取监控清单失败: {e}")
             return []
@@ -366,84 +375,97 @@ class Shandong(object):
         try:
             self.browser.init_driver()
             
-            for school_info in schools:
-                school_name = str(school_info.get('学校名称', '')).strip()
-                school_type = str(school_info.get('类型', '')).strip()
-                if not school_name:
-                    continue
-                
-                # 针对每所学校，执行两条路径的抓取
-                search_configs = [
-                    {"area": "370000", "desc": "省级"},
-                    {"area": "CITY_COUNTY_ALL", "desc": "市区县-全部"}
-                ]
-                
+            # 2. 确定聚合搜索模式 (智能分级)
+            # 判断是否为长周期任务（超过3天）
+            # 时间范围参数: "0"=今日, "7"=近7天, "30"=近30天, "180"=近半年, "365"=近一年, "1095"=近三年
+            is_long_cycle = start_time in ["7", "30", "180", "365", "1095"]
+            
+            if is_long_cycle:
+                # 长周期：使用关键词命中率最高的“核心词组”聚合，节省时间且避免结果上千页
+                keywords = ["职业", "专科"]
+                self._log(f"检测到长周期任务 ({start_time}天)，启用模式B：核心词组聚合搜索 {keywords}")
+            else:
+                # 短周期：直接空关键词全量抓取，效率最高且绝无遗漏
+                keywords = [""]
+                self._log(f"检测到短周期任务 (今日)，启用模式A：空关键词全量聚合搜索")
+
+            search_configs = [
+                {"area": "370000", "desc": "省级"},
+                {"area": "CITY_COUNTY_ALL", "desc": "市区县-全部"}
+            ]
+            
+            raw_collected_count = 0
+            seen_ids = set() # 用于聚合去重
+
+            for kw in keywords:
                 for config in search_configs:
-                    self._log(f"=== 正在抓取学校: [{school_name}] ({config['desc']}) ===")
+                    self._log(f"=== 聚合抓取开始: 关键词=[{kw if kw else '空'}] 区域=[{config['desc']}] ===")
                     
-                    # 导航并搜索
                     self.browser.goto_search_page()
-                    # 执行首次搜索
-                    search_success = self.browser.perform_search(title=school_name, start_time=start_time, end_time=end_time, area=config["area"])
+                    search_success = self.browser.perform_search(title=kw, start_time=start_time, end_time=end_time, area=config["area"])
                     
-                    # 循环爬取当前搜索结果
-                    pages_crawled = 0
-                    current_page_idx = 1 # 这种模式下通常只看前几页
-                    
-                    while pages_crawled < max_pages:
-                        self._log(f"--- 处理 [{school_name}] 第 {current_page_idx} 页 ---")
+                    if not search_success and not self.browser.is_no_data_visible():
+                        self._log("❌ 搜索执行异常且未确认无数据（如连续验证码识别失败）。")
+                        self._log("❌ 为保证数据完整度，杜绝产出带有遗漏的“残缺结果”，将立刻强行终止整个抓取任务！")
+                        raise RuntimeError("关键搜索执行失败，放弃本次完整抓取任务。")
+                        
+                    current_page_idx = 1
+                    while current_page_idx <= max_pages:
+                        self._log(f"--- 抓取翻页: 第 {current_page_idx} 页 ---")
                         
                         records = self.browser.extract_records()
-                        
-                        # 💡 救援逻辑：只有在【搜索失败】或【没记录且确认不了网页提示】时才重试
-                        rescue_attempts = 0
-                        max_rescue_attempts = 3
-                        
-                        # 如果第一次搜索就成功了但确实没有数据，或者页面已经明确提示无数据，则不用救援
                         if not records:
-                            # 判定是否真的不需要救援了
-                            if search_success and self.browser.is_no_data_visible():
-                                self._log(f"页面确认无数据，跳过重试。")
+                            # 判定是否真的结束了
+                            if self.browser.is_no_data_visible():
+                                self._log("页面提示暂无数据，此搜索结束。")
+                                break
                             else:
-                                while not records and rescue_attempts < max_rescue_attempts:
-                                    rescue_attempts += 1
-                                    self._log(f"未检测到内容，尝试第 {rescue_attempts} 次救援搜索...")
-                                    search_success = self.browser.perform_search(title=school_name, start_time=start_time, end_time=end_time, area=config["area"])
-                                    if search_success and self.browser.is_no_data_visible():
-                                        self._log(f"救援搜索确认无数据。")
-                                        break
-                                    records = self.browser.extract_records()
+                                self._log("未检测到记录，可能加载失败，跳过。")
+                                break
                         
-                        if not records:
-                            break
-                        
-                        # 处理详情并注入学校类型
-                        with ThreadPoolExecutor(max_workers=2) as executor:
-                            # 包装 process_item 以便在结果中添加字段
-                            def process_with_metadata(rec):
-                                items = self.process_item(rec)
-                                for item in items:
-                                    item["发布人类型"] = school_type
-                                return items
+                        # 本地精筛与数据注入
+                        for rec in records:
+                            rec_id = rec.get('id')
+                            if rec_id in seen_ids:
+                                continue # 重复数据跳过
                                 
-                            futures = [executor.submit(process_with_metadata, rec) for rec in records]
-                            for f in futures:
-                                res = f.result()
-                                if res: all_data.extend(res)
-                        
-                        pages_crawled += 1
-                        if pages_crawled >= max_pages:
-                            break
+                            # 命中逻辑：公告发布人中包含 86 所学校名称中的任何一个
+                            publisher = rec.get('publisher', '')
+                            matched_school = None
+                            for school_name in target_list:
+                                if school_name in publisher:
+                                    matched_school = school_name
+                                    break
                             
-                        if not self.browser.next_page():
+                            if matched_school:
+                                # 详情解析（这里进入详情页获取具体表格）
+                                details = self.process_item(rec)
+                                for detail in details:
+                                    detail["发布人类型"] = school_type_map.get(matched_school, "")
+                                    all_data.append(detail)
+                                seen_ids.add(rec_id)
+                                self._log(f"🎯 命中目标: {matched_school} - {rec.get('title')}")
+                            
+                            raw_collected_count += 1
+                        
+                        if not self.browser.next_page() or current_page_idx >= max_pages:
                             break
                         current_page_idx += 1
                         
-                    # 给网站一点喘息时间
-                    time.sleep(random.uniform(2, 5))
+                # 关键词间留一点间隔
+                time.sleep(random.uniform(2, 4))
+                
+            self._log(f"聚合抓取结束。原始扫描: {raw_collected_count} 条，匹配目标: {len(all_data)} 条。")
                     
+        except RuntimeError as re:
+            # 捕获我们自己主动抛出的阻断性异常（如连续5次验证码失败）
+            self._log(f"🚨 严重错误中断: {re}")
+            # 必须清空所有已抓取的数据，强制生成一份全空只有表头的文件
+            self._log("🗑️ 已清空当前抓取的所有部分数据，确保只产生空表头。")
+            all_data = []
         except Exception as e:
             self._log(f"爬虫运行异常: {e}")
+            # 如果是意外报错，原逻辑不变，依然保留已抓取的数据并退出循环
         finally:
             if self.browser:
                 self._log("任务结束，关闭浏览器...")
@@ -454,13 +476,25 @@ class Shandong(object):
 
 if __name__ == "__main__":
     s = Shandong()
-    data = s.run(max_pages=2) # Test run
+    # 测试运行前 2 页（空关键词模式）
+    data = s.run(max_pages=2, start_time="0") 
     df = pd.DataFrame(data)
-    # Reorder columns
-    cols = ["序号", "分类1", "分类2", "地市", "客户名称", "项目名称", "金额", "预计时间", "意向发布地址"]
-    # Adjust 序号 to be global
-    df['序号'] = range(1, len(df) + 1)
-    df = df[cols]
-    print(df.head())
-    df.to_excel("shandong_bid.xlsx", index=False)
-    print("Saved to shandong_bid.xlsx")
+    if not df.empty:
+        # 统一 Project C 的列名
+        cols = [
+            "序号", "地区", "标题", "发布时间", "发布人", "发布人类型",
+            "子序号", "采购项目名称", "采购需求概况", "预算金额(万元)",
+            "拟面向中小企业预留", "预计采购时间", "备注", "意向发布地址"
+        ]
+        # 补齐可能缺失的列
+        for col in cols:
+            if col not in df.columns:
+                df[col] = ""
+        
+        df['序号'] = range(1, len(df) + 1)
+        df = df[cols]
+        print(df.head())
+        df.to_excel("shandong_bid_C_test.xlsx", index=False)
+        print("测试数据已保存到 shandong_bid_C_test.xlsx")
+    else:
+        print("未抓取到任何符合目标的数据。")

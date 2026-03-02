@@ -383,12 +383,12 @@
                 <div style="margin-bottom: 1.5rem;">
                     <label>快速选择日期范围</label>
                     <div style="display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1rem;">
-                        <button class="time-preset-btn" onclick="updateDatesByQuickRange(0)">今日</button>
-                        <button class="time-preset-btn" onclick="updateDatesByQuickRange(7)">近7天</button>
-                        <button class="time-preset-btn" onclick="updateDatesByQuickRange(30)">近30天</button>
-                        <button class="time-preset-btn" onclick="updateDatesByQuickRange(180)">近半年</button>
-                        <button class="time-preset-btn" onclick="updateDatesByQuickRange(365)">近一年</button>
-                        <button class="time-preset-btn" onclick="updateDatesByQuickRange(1095)">近三年</button>
+                        <button class="time-preset-btn" onclick="updateDatesByQuickRange(0, this)">今日</button>
+                        <button class="time-preset-btn" onclick="updateDatesByQuickRange(7, this)">近7天</button>
+                        <button class="time-preset-btn" onclick="updateDatesByQuickRange(30, this)">近30天</button>
+                        <button class="time-preset-btn" onclick="updateDatesByQuickRange(180, this)">近半年</button>
+                        <button class="time-preset-btn" onclick="updateDatesByQuickRange(365, this)">近一年</button>
+                        <button class="time-preset-btn" onclick="updateDatesByQuickRange(1095, this)">近三年</button>
                     </div>
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
                         <div>
@@ -416,11 +416,21 @@
                     color: #a78bfa;
                     border: 1px solid rgba(167, 139, 250, 0.3);
                     border-radius: 0.5rem;
+                    cursor: pointer;
+                    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
                 }
 
                 .time-preset-btn:hover {
                     background: rgba(167, 139, 250, 0.2);
                     border-color: #a78bfa;
+                }
+
+                .time-preset-btn.active {
+                    background: var(--primary);
+                    color: white;
+                    border-color: var(--primary);
+                    box-shadow: 0 0 12px rgba(99, 102, 241, 0.5);
+                    font-weight: 500;
                 }
             </style>
 
@@ -539,10 +549,27 @@
 
             loadScheduleStatus(); // 初始化时加载
 
-            function updateDatesByQuickRange(days) {
+            function updateDatesByQuickRange(days, btnElement = null) {
+                // 更新高亮状态
+                document.querySelectorAll('.time-preset-btn').forEach(btn => btn.classList.remove('active'));
+                if (btnElement) {
+                    btnElement.classList.add('active');
+                } else {
+                    // 默认情况，根据传入的 days 寻找匹配的按钮高亮
+                    const buttons = document.querySelectorAll('.time-preset-btn');
+                    const indexMap = { 0: 0, 7: 1, 30: 2, 180: 3, 365: 4, 1095: 5 };
+                    if (indexMap[days] !== undefined && buttons[indexMap[days]]) {
+                        buttons[indexMap[days]].classList.add('active');
+                    }
+                }
+
                 const end = new Date();
                 const start = new Date();
-                start.setDate(end.getDate() - days);
+                // 如果是“今日”，days 为 0，实际上爬虫内部会处理成 昨天14:00~今天14:00
+                // 如果是“近7天”，我们需要包含今天。
+                if (days > 0) {
+                    start.setDate(end.getDate() - (days - 1));
+                }
 
                 const formatDate = (date) => {
                     const year = date.getFullYear();
@@ -553,6 +580,12 @@
 
                 document.getElementById('startTime').value = formatDate(start);
                 document.getElementById('endTime').value = formatDate(end);
+
+                // [核心修复] 保存原始的 days 值到 startTime.dataset，
+                // 以便在发送 API 请求时，如果用户没有手动修改过日期，
+                // 我们发送快捷代码（如 "7", "30"）而不是具体的日期字符串，
+                // 这样后端 shandong.py 才能正确识别并开启“长周期聚合模式”。
+                document.getElementById('startTime').dataset.quickRange = days;
             }
 
             // 简单的状态提示辅助函数
@@ -566,19 +599,32 @@
                 }, 3000);
             }
 
-            startBtn.onclick = async () => {
-                const startTime = document.getElementById('startTime').value;
-                const endTime = document.getElementById('endTime').value;
+            // 如果用户手动修改了日期，就清除快捷代码标识并取消按钮高亮
+            const clearQuickRange = () => {
+                delete document.getElementById('startTime').dataset.quickRange;
+                document.querySelectorAll('.time-preset-btn').forEach(btn => btn.classList.remove('active'));
+            };
+            document.getElementById('startTime').oninput = clearQuickRange;
+            document.getElementById('endTime').oninput = clearQuickRange;
 
-                if (!startTime || !endTime) {
+            startBtn.onclick = async () => {
+                const startTimeInput = document.getElementById('startTime');
+                const endTimeInput = document.getElementById('endTime');
+
+                // 核心逻辑：如果 dataset.quickRange 存在，优先发送快捷代码
+                // 这样后端 shandong.py 才能触发对应的“智能聚合模式”
+                const startTimeValue = startTimeInput.dataset.quickRange || startTimeInput.value;
+                const endTimeValue = endTimeInput.value;
+
+                if (!startTimeValue || !endTimeValue) {
                     showStatusMessage('请先选择日期范围', 'failed');
                     return;
                 }
 
                 const payload = {
                     area: document.getElementById('area').value,
-                    startTime: startTime,
-                    endTime: endTime,
+                    startTime: String(startTimeValue), // 可能是 "7" 或 "2026-02-23"
+                    endTime: endTimeValue,
                     startPage: parseInt(document.getElementById('startPage').value),
                     maxPages: parseInt(document.getElementById('maxPages').value),
                     title: "",

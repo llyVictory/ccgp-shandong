@@ -158,6 +158,12 @@ def shutdown_event():
         scheduler.shutdown(wait=False)
     except Exception as e:
         print(f"关闭调度器时出错: {e}")
+    
+    # 强制退出：由于 Selenium 的长时间阻塞或循环操作，FastAPI 默认的优雅停机
+    # 会一直等待 BackgroundTasks 结束，导致 Ctrl+C 卡死并报错。这里直接强制终止进程。
+    import os
+    print("强制终止所有后台爬虫进程...")
+    os._exit(0)
 
 # 定时任务配置文件
 SCHEDULE_CONFIG_FILE = "schedule_config.json"
@@ -238,28 +244,9 @@ def run_spider_task(task_id: str, req: CrawlRequest):
         # 无论是否有数据，都生成 Excel 供下载（无数据则只有表头）
         df = pd.DataFrame(data if data else [])
         
-        # 1. 时间过滤（仅在有数据时执行有效过滤逻辑，没数据跳过）
+        # 1. 整理采集到的数据（不再强制 14:00 过滤，因为单次任务由用户在前端指定各异的时间跨度）
         if not df.empty:
-            from datetime import datetime, timedelta
-            try:
-                now = datetime.now()
-                today_14 = now.replace(hour=14, minute=0, second=0, microsecond=0)
-                yesterday_14 = today_14 - timedelta(days=1)
-                
-                log_callback(f"时间过滤范围: {yesterday_14.strftime('%Y-%m-%d %H:%M:%S')} ~ {today_14.strftime('%Y-%m-%d %H:%M:%S')}")
-                log_callback(f"过滤前数据条数: {len(df)}")
-                
-                if "发布具体时间" in df.columns:
-                    def is_in_range(dt_str):
-                        if not dt_str or pd.isna(dt_str): return True
-                        try:
-                            dt = datetime.strptime(str(dt_str).strip(), "%Y-%m-%d %H:%M:%S")
-                            return yesterday_14 <= dt <= today_14
-                        except: return True
-                    df = df[df["发布具体时间"].apply(is_in_range)]
-                    log_callback(f"过滤后数据条数: {len(df)}")
-            except Exception as e:
-                log_callback(f"时间过滤出错: {e}")
+            log_callback(f"采集完成条数: {len(df)}")
 
         # 2. 列名归一化与补充表头
         if "发布具体时间" in df.columns:
