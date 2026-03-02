@@ -90,7 +90,7 @@ def save_df_to_excel_with_style(df, filepath):
             3: 25,  # 标题 
             4: 20,  # 发布时间
             5: 18,  # 发布人
-            6: 15,  # 发布人类型
+            6: 20,  # 发布人类型
             7: 6,   # 子序号
             8: 30,  # 采购项目名称
             9: 60,  # 采购需求概况
@@ -103,10 +103,10 @@ def save_df_to_excel_with_style(df, filepath):
         
         # 应用列宽
         for col_idx, width in col_width_map.items():
-            if col_idx <= len(df.columns):
-                col_letter = worksheet.cell(row=1, column=col_idx).column_letter
-                worksheet.column_dimensions[col_letter].width = width
-            
+            from openpyxl.utils import get_column_letter
+            col_letter = get_column_letter(col_idx)
+            worksheet.column_dimensions[col_letter].width = width
+
         
         # 应用对齐样式和字体
         # [用户配置] 内容行固定高度，您可以在此处直接修改数字来调节松紧
@@ -250,8 +250,13 @@ def run_spider_task(task_id: str, req: CrawlRequest):
 
         # 2. 列名归一化与补充表头
         if "发布具体时间" in df.columns:
+            # 防止重名冲突出现两个“发布时间”
+            if "发布时间" in df.columns:
+                df = df.drop(columns=["发布时间"])
             df = df.rename(columns={"发布具体时间": "发布时间"})
         if "意向发布地址" in df.columns:
+            if "发布地址" in df.columns:
+                df = df.drop(columns=["发布地址"])
             df = df.rename(columns={"意向发布地址": "发布地址"})
             
         # 标准输出列
@@ -320,7 +325,7 @@ def run_scheduled_spider():
         return
     
     area = config.get("area", "370000")
-    download_path = config.get("downloadPath", "D:\\spider_downloads")
+    download_path = config.get("downloadPath", "D:\\spider_downloads_C")
     
     # 确保下载目录存在
     os.makedirs(download_path, exist_ok=True)
@@ -352,10 +357,11 @@ def run_scheduled_spider():
         "拟面向中小企业预留", "预计采购时间", "备注", "发布地址"
     ]
     
-    # 生成文件名（按需求格式：省本级采购意向（20260206）.xlsx）
+    # 生成文件名（使用环境变量配置前缀：省本级采购意向（20260206）.xlsx）
     from datetime import datetime, timedelta
     today_str = datetime.now().strftime("%Y%m%d")
-    filename = f"省本级采购意向（{today_str}）.xlsx"
+    prefix = os.getenv("EXCEL_FILENAME_PREFIX", "省本级采购意向")
+    filename = f"{prefix}（{today_str}）.xlsx"
     filepath = os.path.join(download_path, filename)
     
     if data:
@@ -388,8 +394,12 @@ def run_scheduled_spider():
             add_log(f"时间过滤出错: {e}")
         
         if "发布具体时间" in df.columns:
+            if "发布时间" in df.columns:
+                df = df.drop(columns=["发布时间"])
             df = df.rename(columns={"发布具体时间": "发布时间"})
         if "意向发布地址" in df.columns:
+            if "发布地址" in df.columns:
+                df = df.drop(columns=["发布地址"])
             df = df.rename(columns={"意向发布地址": "发布地址"})
 
         for col in cols:

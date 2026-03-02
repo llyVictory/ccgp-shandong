@@ -324,7 +324,7 @@
 
 <body>
     <div class="container">
-        <h1>山东政采爬虫控制台</h1>
+        <h1>山东政采爬虫控制台C</h1>
         <div class="form-group" style="display: none;">
             <label>省级 / 市区县</label>
             <select id="area">
@@ -337,10 +337,11 @@
                 <div style="color: var(--primary); font-size: 1.1rem; font-weight: 600; margin-bottom: 0.5rem;">自动任务模式
                 </div>
                 <div style="color: #94a3b8; font-size: 0.95rem; line-height: 1.6;">
-                    系统将自动循环读取 <code
+                    系统将统一使用模糊关键词（职业、专科）进行检索，
+                    在<strong>省级</strong>和<strong>市区县-全部</strong>两个路径进行快速抓取，最后通过
+                    <code
                         style="color: #818cf8; background: #0f172a; padding: 0.2rem 0.4rem; border-radius: 0.3rem;">monitor_schools.xlsx</code>
-                    中的学校清单，
-                    并逐一在<strong>省级</strong>和<strong>市区县-全部</strong>两个路径进行全量抓取。
+                    学校清单对结果进行筛选。
                 </div>
             </div>
             <!-- 隐藏的配置（固定值） -->
@@ -366,19 +367,34 @@
                 </div>
                 <div class="form-group">
                     <label>下载保存路径</label>
-                    <input type="text" id="downloadPath" value="D:\spider_downloads"
-                        placeholder="例如: D:\spider_downloads">
+                    <input type="text" id="downloadPath" value="D:\spider_downloads_C"
+                        placeholder="例如: D:\spider_downloads_C">
                 </div>
                 <div style="color: #94a3b8; font-size: 0.85rem; margin-top: 0.5rem; margin-bottom: 1rem;">
                     定时任务将每天固定时间执行，数据来源时间范围为"昨天14:00 ~ 今天14:00"，并自动保存到指定路径
                 </div>
+
+                <!-- 当前定时任务状态（已移入卡片内部） -->
+                <div id="scheduleStatus"
+                    style="display: none; margin-bottom: 1.5rem; padding: 1.25rem; background: linear-gradient(135deg, rgba(34, 197, 94, 0.08) 0%, rgba(34, 197, 94, 0.12) 100%); border: 1px solid rgba(34, 197, 94, 0.25); border-radius: 0.75rem; box-shadow: 0 2px 8px rgba(34, 197, 94, 0.1);">
+                    <div style="display: grid; grid-template-columns: 6fr 4fr; gap: 1.5rem; align-items: center;">
+                        <div id="scheduleInfo" style="color: #64748b; font-size: 0.9rem; line-height: 1.5;"></div>
+                        <div style="display: flex; justify-content: flex-end;">
+                            <button id="deleteScheduleBtn"
+                                style="padding: 0.75rem 1.5rem; background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); border: none; color: white; border-radius: 0.5rem; cursor: pointer; font-size: 0.875rem; font-weight: 500; transition: all 0.2s; white-space: nowrap; box-shadow: 0 2px 4px rgba(239, 68, 68, 0.2);"
+                                onmouseover="this.style.transform='translateY(-1px)'; this.style.boxShadow='0 4px 8px rgba(239, 68, 68, 0.3)'"
+                                onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 2px 4px rgba(239, 68, 68, 0.2)'">删除</button>
+                        </div>
+                    </div>
+                </div>
+
                 <button id="createScheduleBtn" style="margin-top: 0;">创建/更新定时任务</button>
             </div>
 
             <!-- 一次性任务配置 -->
             <div
                 style="margin-top: 1.5rem; padding: 1.5rem; background: rgba(139, 92, 246, 0.05); border: 1px solid rgba(139, 92, 246, 0.2); border-radius: 0.75rem;">
-                <h3 style="margin: 0 0 1rem 0; color: #a78bfa; font-size: 1.1rem;">一次性任务配置 (可选)</h3>
+                <h3 style="margin: 0 0 1rem 0; color: #a78bfa; font-size: 1.1rem;">一次性任务配置</h3>
 
                 <div style="margin-bottom: 1.5rem;">
                     <label>快速选择日期范围</label>
@@ -433,20 +449,6 @@
                     font-weight: 500;
                 }
             </style>
-
-            <!-- 当前定时任务状态 -->
-            <div id="scheduleStatus"
-                style="display: none; margin-top: 1rem; padding: 1.25rem; background: linear-gradient(135deg, rgba(34, 197, 94, 0.08) 0%, rgba(34, 197, 94, 0.12) 100%); border: 1px solid rgba(34, 197, 94, 0.25); border-radius: 0.75rem; box-shadow: 0 2px 8px rgba(34, 197, 94, 0.1);">
-                <div style="display: grid; grid-template-columns: 6fr 4fr; gap: 1.5rem; align-items: center;">
-                    <div id="scheduleInfo" style="color: #64748b; font-size: 0.9rem; line-height: 1.5;"></div>
-                    <div style="display: flex; justify-content: flex-end;">
-                        <button id="deleteScheduleBtn"
-                            style="padding: 0.75rem 1.5rem; background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); border: none; color: white; border-radius: 0.5rem; cursor: pointer; font-size: 0.875rem; font-weight: 500; transition: all 0.2s; white-space: nowrap; box-shadow: 0 2px 4px rgba(239, 68, 68, 0.2);"
-                            onmouseover="this.style.transform='translateY(-1px)'; this.style.boxShadow='0 4px 8px rgba(239, 68, 68, 0.3)'"
-                            onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 2px 4px rgba(239, 68, 68, 0.2)'">删除</button>
-                    </div>
-                </div>
-            </div>
 
             <div id="status"></div>
             <div id="logConsole">
@@ -528,7 +530,7 @@
                         <div style="color: #22c55e; font-size: 0.95rem; line-height: 1.8;">
                             <div>✓ 定时任务已启用</div>
                             <div>✓ 每天 ${String(data.config.hour).padStart(2, '0')}:${String(data.config.minute).padStart(2, '0')} 执行</div>
-                            <div>✓ 爬取数据：省级、昨天14:00~今天14:00</div>
+                            <div>✓ 爬取数据：省级+市区县、昨天14:00~今天14:00</div>
                             <div>✓ 保存路径：${data.config.downloadPath}</div>
                         </div>
                     `;
