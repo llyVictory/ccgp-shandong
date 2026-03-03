@@ -13,6 +13,16 @@ import shutil
 from openpyxl.styles import Alignment, Font
 import math
 
+def split_keywords(kw_str):
+    """
+    处理关键词字符串，支持中文和英文逗号分隔
+    """
+    if not kw_str:
+        return ["职业", "专科"]
+    # 支持中文逗号和英文逗号
+    kw_str = kw_str.replace("，", ",")
+    return [k.strip() for k in kw_str.split(",") if k.strip()]
+
 def calculate_row_height(row_values, col_width_map, base_height=18):
     """
     根据每一列的内容长度和列宽，估算该行需要的最大高度。
@@ -167,6 +177,7 @@ def shutdown_event():
 
 # 定时任务配置文件
 SCHEDULE_CONFIG_FILE = "schedule_config.json"
+SCHEDULED_LOG_FILE = "scheduled_log.txt"
 
 # 定时任务日志和状态
 scheduled_task_logs = []
@@ -184,12 +195,14 @@ class CrawlRequest(BaseModel):
     maxPages: int = 1
     title: str = ""
     useProxy: bool = False
+    keywords: str = ""
 
 class ScheduleTaskRequest(BaseModel):
     area: str = "370000"
     hour: int = 0  # 执行时间（小时）
     minute: int = 0  # 执行时间（分钟）
     downloadPath: str = "D:\\spider_downloads"  # 下载路径
+    keywords: str = "" # 检索关键词
 
 @app.get("/")
 async def read_index():
@@ -238,7 +251,8 @@ def run_spider_task(task_id: str, req: CrawlRequest):
             title=req.title, 
             start_time=req.startTime, 
             end_time=req.endTime, 
-            area=req.area
+            area=req.area,
+            keywords=split_keywords(req.keywords)
         )
         
         # 无论是否有数据，都生成 Excel 供下载（无数据则只有表头）
@@ -307,9 +321,20 @@ def run_scheduled_spider():
     scheduled_task_status["last_result"] = None
     
     def add_log(msg):
-        """添加日志到全局列表"""
+        """添加日志到全局列表并写入文件"""
+        from datetime import datetime
+        time_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        record = f"[{time_str}] {msg}"
+        
         scheduled_task_logs.append(msg)
         print(f"[定时任务] {msg}")
+        
+        # 写入持久化日志文件
+        try:
+            with open(SCHEDULED_LOG_FILE, "a", encoding="utf-8") as f:
+                f.write(record + "\n")
+        except:
+            pass
     
     add_log("=" * 50)
     add_log("定时任务开始执行...")
@@ -326,10 +351,12 @@ def run_scheduled_spider():
     
     area = config.get("area", "370000")
     download_path = config.get("downloadPath", "D:\\spider_downloads_C")
+    keywords_str = config.get("keywords", "职业，专科")
     
     # 确保下载目录存在
     os.makedirs(download_path, exist_ok=True)
     add_log(f"下载路径: {download_path}")
+    add_log(f"检索关键词: {keywords_str}")
     
     # 定义日志回调函数
     def log_callback(msg):
@@ -347,7 +374,8 @@ def run_scheduled_spider():
         title="",
         start_time="0",  # 今日
         end_time="",
-        area=area
+        area=area,
+        keywords=split_keywords(keywords_str)
     )
     
     # 定义列结构
@@ -454,7 +482,8 @@ async def create_schedule(req: ScheduleTaskRequest):
         "area": req.area,
         "hour": req.hour,
         "minute": req.minute,
-        "downloadPath": req.downloadPath
+        "downloadPath": req.downloadPath,
+        "keywords": req.keywords
     }
     
     with open(SCHEDULE_CONFIG_FILE, 'w', encoding='utf-8') as f:

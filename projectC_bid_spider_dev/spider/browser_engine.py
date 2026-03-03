@@ -171,6 +171,60 @@ class BrowserEngine:
         except:
             self._log(f"页面加载超时({timeout}s)，可能网络慢或结构变更")
 
+    def _fill_date_range(self, start_date_str, end_date_str):
+        """通用私有方法：在页面中填入起止日期"""
+        # 1. 尝试找到并点击"自定义"时间按钮
+        try:
+            all_divs = self.driver.find_elements(By.TAG_NAME, "div")
+            for div in all_divs:
+                try:
+                    div_text = div.text.strip()
+                    div_class = div.get_attribute("class") or ""
+                    if "item" in div_class and ("自定义" in div_text or "自选" in div_text):
+                        if "is_active" not in div_class:
+                            div.click()
+                            self._log("点击了'自定义'时间按钮")
+                            time.sleep(random.uniform(1, 2))
+                        break
+                except:
+                    continue
+            
+            # 2. 查找日期输入框方案 A: 根据 placeholder
+            date_inputs = []
+            all_inputs = self.driver.find_elements(By.TAG_NAME, "input")
+            for inp in all_inputs:
+                ph = inp.get_attribute("placeholder") or ""
+                if "开始" in ph or "起始" in ph:
+                    date_inputs.append(("start", inp))
+                elif "结束" in ph or "截止" in ph:
+                    date_inputs.append(("end", inp))
+            
+            # 方案 B: 根据 el-date-editor 类名 (Element UI)
+            if len(date_inputs) < 2:
+                range_inputs = self.driver.find_elements(By.CSS_SELECTOR, ".el-date-editor input, .el-range-input")
+                if len(range_inputs) >= 2:
+                    date_inputs = [("start", range_inputs[0]), ("end", range_inputs[1])]
+            
+            if len(date_inputs) >= 2:
+                for dtype, inp in date_inputs:
+                    target_val = start_date_str if dtype == "start" else end_date_str
+                    # 使用 JS 清空并填入值，防止原生 clear()/send_keys() 触发日期面板阻碍操作
+                    try:
+                        self.driver.execute_script("arguments[0].value = '';", inp)
+                        inp.send_keys(target_val)
+                        self._log(f"已填入{'开始' if dtype=='start' else '结束'}日期: {target_val}")
+                    except:
+                        inp.clear()
+                        inp.send_keys(target_val)
+                time.sleep(random.uniform(1, 2))
+                return True
+            else:
+                self._log("⚠️ 未能在页面找到有效的起止日期输入框")
+                return False
+        except Exception as e:
+            self._log(f"填充日期过程异常: {e}")
+            return False
+
     def perform_search(self, title="", start_time="", end_time="", area="370000"):
         # 把快捷代码转成可读文本用于日志显示
         time_display_map = {
@@ -178,16 +232,12 @@ class BrowserEngine:
             "180": "近半年", "365": "近一年", "1095": "近三年"
         }
         time_display = time_display_map.get(start_time, f"{start_time}~{end_time}")
-        # self._log(f"执行搜索: 地区={area}, 标题={title}, 时间范围={time_display}")
         
         # 0. 切换到 '意向公开' Tab (左侧菜单第一项)
         try:
             self._log("尝试切换到 '意向公开' Tab...")
-            # 使用用户提供的精确 XPath
             tab_xpath = "/html/body/div[1]/div[1]/div/div/div[1]/div/ul/li[1]"
             tab_el = self.driver.find_element(By.XPATH, tab_xpath)
-            
-            # 检查是否已激活
             class_attr = tab_el.get_attribute("class") or ""
             if "is_active" not in class_attr:
                 tab_el.click()
@@ -198,34 +248,15 @@ class BrowserEngine:
         except Exception as e:
             self._log(f"切换 Tab 失败: {e}")
 
-        
-        # 1. 地区选择 - 使用精确的 XPath
-        # 山东省本级 = 370000
-        # 其他市需要先点击"市区县"tab，再点击具体城市
+        # 1. 地区选择
         try:
-            # 城市代码到 XPath index 的映射 (基于用户提供的 XPath)
             city_xpath_index = {
-                "370100": 2,   # 济南市
-                "370200": 3,   # 青岛市
-                "370300": 4,   # 淄博市
-                "370400": 5,   # 枣庄市
-                "370500": 6,   # 东营市
-                "370600": 7,   # 烟台市
-                "370700": 8,   # 潍坊市
-                "370800": 9,   # 济宁市
-                "370900": 10,  # 泰安市
-                "371000": 11,  # 威海市
-                "371100": 12,  # 日照市
-                "371200": 13,  # 莱芜市
-                "371300": 14,  # 临沂市
-                "371400": 15,  # 德州市
-                "371500": 16,  # 聊城市
-                "371600": 17,  # 滨州市
-                "371700": 18,  # 菏泽市
+                "370100": 2, "370200": 3, "370300": 4, "370400": 5, "370500": 6,
+                "370600": 7, "370700": 8, "370800": 9, "370900": 10, "371000": 11,
+                "371100": 12, "371200": 13, "371300": 14, "371400": 15, "371500": 16,
+                "371600": 17, "371700": 18,
             }
-            
             if area == "370000":
-                # 山东省本级 - 直接点击
                 xpath = "/html/body/div[1]/div[1]/div/div/div[2]/div/div[2]/div[1]/div[1]/div[1]"
                 el = self.driver.find_element(By.XPATH, xpath)
                 if "is_active" not in (el.get_attribute("class") or ""):
@@ -233,46 +264,36 @@ class BrowserEngine:
                     self._log("选择了: 山东省本级")
                     time.sleep(random.uniform(1, 2))
             elif area == "CITY_COUNTY_ALL":
-                # 点击"市区县"tab
                 tab_xpath = "/html/body/div[1]/div[1]/div/div/div[2]/div/div[2]/div[1]/div[1]/div[2]"
                 tab_el = self.driver.find_element(By.XPATH, tab_xpath)
                 if "is_active" not in (tab_el.get_attribute("class") or ""):
                     tab_el.click()
                     self._log("点击了: 市区县 Tab")
                     time.sleep(random.uniform(1, 2))
-                
-                # 点击"全部"按钮
                 all_xpath = "/html/body/div[1]/div[1]/div/div/div[2]/div/div[2]/div[1]/div[2]/div[1]/div[3]/div[2]/div[1]"
                 all_el = self.driver.find_element(By.XPATH, all_xpath)
                 all_el.click()
                 self._log("选择了: 市区县 - 全部")
                 time.sleep(random.uniform(1, 2))
             elif area in city_xpath_index:
-                # 先点击"市区县"tab
                 tab_xpath = "/html/body/div[1]/div[1]/div/div/div[2]/div/div[2]/div[1]/div[1]/div[2]"
                 tab_el = self.driver.find_element(By.XPATH, tab_xpath)
                 if "is_active" not in (tab_el.get_attribute("class") or ""):
                     tab_el.click()
                     self._log("点击了: 市区县 Tab")
                     time.sleep(random.uniform(1, 2))
-                
-                # 再点击具体城市
                 idx = city_xpath_index[area]
                 city_xpath = f"/html/body/div[1]/div[1]/div/div/div[2]/div/div[2]/div[1]/div[2]/div[1]/div[3]/div[2]/div[{idx}]"
                 city_el = self.driver.find_element(By.XPATH, city_xpath)
                 city_el.click()
                 self._log(f"选择了城市: {city_el.text.strip()}")
                 time.sleep(random.uniform(1, 2))
-            else:
-                self._log(f"未知的地区代码: {area}，跳过地区选择")
         except Exception as e:
             self._log(f"地区选择出错: {e}")
 
         # 2. 标题输入
         if title:
             try:
-                # input[placeholder="请输入公告标题"]
-                # 遍历 input 找 placeholder
                 inputs = self.driver.find_elements(By.TAG_NAME, "input")
                 for inp in inputs:
                     ph = inp.get_attribute("placeholder")
@@ -284,145 +305,51 @@ class BrowserEngine:
                 self._log(f"标题输入出错: {e}")
 
         # 3. 时间范围选择
-        # 映射关系: 我们的参数 -> 网站按钮文本
-        # start_time 现在传的是 quickTimeRange 值: "0"=今日, "7"=近7天, "30"=近30天, "180"=近半年, "365"=近一年, "1095"=近三年
-        # 特殊处理: "0"(今日) 使用自定义时间范围: 昨天14:00 到 今天14:00
-        time_range_map = {
-            "7": "近7天",
-            "30": "近30天",
-            "180": "近半年",
-            "365": "近一年",
-            "1095": "近三年"
-        }
+        time_range_map = { "7": "近7天", "30": "近30天", "180": "近半年", "365": "近一年", "1095": "近三年" }
         
-        # 特殊处理 "0" (今日) - 策略：先爬取"昨天+今天"两天数据，后期通过精确发布时间过滤
-        # 由于网站日期选择器只支持日期不支持时分秒，我们选择更宽的范围
         if start_time == "0":
-            try:
-                from datetime import datetime, timedelta
-                now = datetime.now()
-                yesterday = (now - timedelta(days=1)).strftime("%Y-%m-%d")
-                today = now.strftime("%Y-%m-%d")
-                
-                self._log(f"时间范围策略: 爬取 {yesterday} ~ {today} 两天数据")
-                self._log("后续将通过精确发布时间过滤 (昨天14:00 ~ 今天14:00)")
-                
-                # 尝试点击"自定义"或找到日期输入框
-                # 1. 先尝试找并点击"自定义"按钮
-                all_divs = self.driver.find_elements(By.TAG_NAME, "div")
-                custom_clicked = False
-                for div in all_divs:
-                    try:
-                        div_text = div.text.strip()
-                        div_class = div.get_attribute("class") or ""
-                        if "item" in div_class and ("自定义" in div_text or "自选" in div_text):
-                            if "is_active" not in div_class:
-                                div.click()
-                                self._log("点击了'自定义'时间按钮")
-                                time.sleep(random.uniform(1, 2))
-                            custom_clicked = True
-                            break
-                    except:
-                        continue
-                
-                # 2. 查找日期输入框 (只填日期，不填时分秒)
-                date_inputs = []
-                all_inputs = self.driver.find_elements(By.TAG_NAME, "input")
-                for inp in all_inputs:
-                    ph = inp.get_attribute("placeholder") or ""
-                    if "开始" in ph or "起始" in ph:
-                        date_inputs.append(("start", inp))
-                    elif "结束" in ph or "截止" in ph:
-                        date_inputs.append(("end", inp))
-                
-                if len(date_inputs) < 2:
-                    range_inputs = self.driver.find_elements(By.CSS_SELECTOR, ".el-date-editor input, .el-range-input")
-                    if len(range_inputs) >= 2:
-                        date_inputs = [("start", range_inputs[0]), ("end", range_inputs[1])]
-                
-                if len(date_inputs) >= 2:
-                    for dtype, inp in date_inputs:
-                        if dtype == "start":
-                            inp.clear()
-                            inp.send_keys(yesterday)
-                            self._log(f"填入开始日期: {yesterday}")
-                        elif dtype == "end":
-                            inp.clear()
-                            inp.send_keys(today)
-                            self._log(f"填入结束日期: {today}")
-                    time.sleep(random.uniform(1, 2))
-                else:
-                    # Fallback: 点击"近7天"按钮（包含昨天和今天）
-                    self._log("⚠️ 未找到日期输入框，降级使用'近7天'按钮")
-                    for div in all_divs:
-                        try:
-                            div_text = div.text.strip()
-                            div_class = div.get_attribute("class") or ""
-                            if "item" in div_class and div_text == "近7天":
-                                if "is_active" not in div_class:
-                                    div.click()
-                                    self._log("点击了时间范围按钮: 近7天 (降级方案)")
-                                    time.sleep(random.uniform(1, 2))
-                                break
-                        except:
-                            continue
-                            
-            except Exception as e:
-                self._log(f"时间范围设置出错: {e}")
-        
-        # 如果 start_time 是其他快捷代码（非"0"），点击对应按钮
+            from datetime import datetime, timedelta
+            yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+            today = datetime.now().strftime("%Y-%m-%d")
+            self._log(f"今日模式策略: 爬取 {yesterday} ~ {today}")
+            self._fill_date_range(yesterday, today)
         elif start_time in time_range_map:
             quick_btn_text = time_range_map[start_time]
             try:
                 self._log(f"尝试点击时间范围: {quick_btn_text}")
-                # 查找时间范围按钮列表 - 通过文本内容查找所有 div
                 all_divs = self.driver.find_elements(By.TAG_NAME, "div")
                 clicked = False
                 for div in all_divs:
                     try:
                         div_text = div.text.strip()
                         div_class = div.get_attribute("class") or ""
-                        # 必须是 .item 类的 div，且文本完全匹配
                         if "item" in div_class and div_text == quick_btn_text:
                             if "is_active" not in div_class:
                                 div.click()
                                 self._log(f"点击了时间范围按钮: {quick_btn_text}")
                                 time.sleep(random.uniform(1, 2))
-                            else:
-                                self._log(f"时间范围按钮 '{quick_btn_text}' 已激活")
                             clicked = True
                             break
-                    except:
-                        continue
-                
-                if not clicked:
-                    self._log(f"未找到时间范围按钮: {quick_btn_text}")
-            except Exception as e:
-                self._log(f"时间范围选择出错: {e}")
+                    except: continue
+            except Exception as e: self._log(f"快捷时间设置出错: {e}")
+        else:
+            # 处理自定义日期 (如 2026-01-01)
+            self._log(f"使用自选日期: {start_time} 至 {end_time}")
+            self._fill_date_range(start_time, end_time)
 
-        # 4. 点击查询 (可能触发验证码)
         # 4. 点击查询 (带重试机制)
-        # 查找按钮: span 文本为 "查询" 的按钮
         try:
-            # a. 处理验证码
-            # 用户强调步骤：参数设置完 -> 点击刷新 -> 识别 -> 填入 -> 点击查询
-            # 我们显式触发刷新按钮点击，确保拿到最新验证码
             try:
                 refresh_btn = self.driver.find_element(By.CSS_SELECTOR, "div.n-captcha i.refresh-icon")
                 refresh_btn.click()
                 self._log("强制刷新验证码...")
                 time.sleep(random.uniform(1, 2)) 
-            except:
-                pass
+            except: pass
 
-            # 4. 验证码识别与提交 (带严格重试逻辑)
             max_search_attempts = 5
             search_success = False
             for attempt in range(max_search_attempts):
-                # 第一次不一定刷新（可能页面刚加载就有验证码），之后识别失败则刷新
                 self.solve_captcha(refresh_first=(attempt > 0))
-                
-                # 点击查询按钮
                 buttons = self.driver.find_elements(By.TAG_NAME, "button")
                 found_btn = False
                 for btn in buttons:
@@ -430,42 +357,20 @@ class BrowserEngine:
                         btn.click()
                         found_btn = True
                         break
-                
-                if not found_btn:
-                    self._log("❌ 未找到查询按钮，无法执行搜索")
-                    break
-
-                time.sleep(random.uniform(2, 3)) # 等待页面响应
-                
-                # --- 明确判定逻辑 ---
-                # a. 检查是否有“验证码错误”弹出层
+                if not found_btn: break
+                time.sleep(random.uniform(2, 3))
                 error = self.check_search_error()
                 if error == "captcha_error":
-                    self._log(f"⚠️ 验证码识别错误 (尝试 {attempt+1}/{max_search_attempts})...")
+                    self._log(f"⚠️ 识别错误 (尝试 {attempt+1}/{max_search_attempts})...")
                     continue
-                elif error:
-                    self._log(f"⚠️ 搜索返回其他提示: {error}")
-                    # 其他提示（如“查询过于频繁”）可能也需要重试或直接退出
-                    continue
-                
-                # b. 即使没有错误弹出，也要检查搜索结果条数 el
-                # 如果能读到“共搜到 X 条”，说明查询动作确实成功被执行了
                 res_count = self.get_result_count()
                 if res_count >= 0:
-                    self._log(f"✅ 查询动作执行成功，搜索结果总数: {res_count}")
+                    self._log(f"✅ 查询成功，总数: {res_count}")
                     search_success = True
                     break
-                else:
-                    self._log(f"⚠️ 未检测到结果总数，可能卡在验证码或加载中 (尝试 {attempt+1}/{max_search_attempts})...")
-                    continue
-            
-            if not search_success:
-                self._log("❌ 达到最大搜索重试次数，未能成功提交查询")
-                return False
-            return True
-
+            return search_success
         except Exception as e:
-            self._log(f"搜索过程出错: {e}")
+            self._log(f"搜索提交出错: {e}")
             return False
 
 

@@ -342,7 +342,7 @@ class Shandong(object):
             
         return final_rows
 
-    def run(self, max_pages=1, start_page=1, title="", start_time="", end_time="", area="370000"):
+    def run(self, max_pages=1, start_page=1, title="", start_time="", end_time="", area="370000", keywords=None):
         from spider.browser_engine import BrowserEngine
         import os
         
@@ -378,7 +378,8 @@ class Shandong(object):
             # 2. 确定聚合搜索模式 (智能分级)
             # 判断是否为长周期任务（超过3天）
             # 根据要求：摒弃全量策略，无论时间段，全部使用模糊关键词策略
-            keywords = ["职业", "专科"]
+            if keywords is None:
+                keywords = ["职业", "专科"]
             self._log(f"当前任务设定 ({start_time}模式): 启用核心词组模糊匹配策略 {keywords}，摒弃全量防止数据量过载")
 
             search_configs = [
@@ -389,9 +390,9 @@ class Shandong(object):
             raw_collected_count = 0
             seen_ids = set() # 用于聚合去重
 
-            for kw in keywords:
-                for config in search_configs:
-                    self._log(f"=== 聚合抓取开始: 关键词=[{kw if kw else '空'}] 区域=[{config['desc']}] ===")
+            for config in search_configs:
+                for kw in keywords:
+                    self._log(f"=== 聚合抓取开始: 区域=[{config['desc']}] 关键词=[{kw if kw else '空'}] ===")
                     
                     self.browser.goto_search_page()
                     search_success = self.browser.perform_search(title=kw, start_time=start_time, end_time=end_time, area=config["area"])
@@ -444,8 +445,8 @@ class Shandong(object):
                             break
                         current_page_idx += 1
                         
-                # 关键词间留一点间隔
-                time.sleep(random.uniform(2, 4))
+                    # 抓取完一个组合留一点间隔
+                    time.sleep(random.uniform(2, 4))
                 
             self._log(f"聚合抓取结束。原始扫描: {raw_collected_count} 条，匹配目标: {len(all_data)} 条。")
                     
