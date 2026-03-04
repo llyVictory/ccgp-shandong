@@ -491,3 +491,15 @@ if __name__ == "__main__":
         print("测试数据已保存到 shandong_bid_C_test.xlsx")
     else:
         print("未抓取到任何符合目标的数据。")
+        # 即使无数据，也按要求生成空 Excel 并在第一个格子写入“无数据”
+        cols = [
+            "序号", "地区", "标题", "发布时间", "发布人", "发布人类型",
+            "子序号", "采购项目名称", "采购需求概况", "预算金额(万元)",
+            "拟面向中小企业预留", "预计采购时间", "备注", "意向发布地址"
+        ]
+        df = pd.DataFrame(columns=cols)
+        empty_row = {col: "" for col in cols}
+        empty_row[cols[0]] = "无数据"
+        df = pd.DataFrame([empty_row])
+        df.to_excel("shandong_bid_C_test.xlsx", index=False)
+        print("已生成包含‘无数据’标记的空 Excel 文件: shandong_bid_C_test.xlsx")

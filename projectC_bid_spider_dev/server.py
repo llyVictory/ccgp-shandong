@@ -77,10 +77,18 @@ def save_df_to_excel_with_style(df, filepath):
     if df is None:
         return
         
-    # 如果 DataFrame 为空，也建立一个空的带表头的文件
+    # 如果 DataFrame 为空，补入一行“无数据”标记
     if df.empty:
-        df.to_excel(filepath, index=False)
-        return
+        cols = df.columns.tolist()
+        if cols:
+            # 创建一行数据，第一个单元格填入 "无数据"
+            empty_row = {col: "" for col in cols}
+            empty_row[cols[0]] = "无数据"
+            df = pd.DataFrame([empty_row])
+        else:
+            # 如果连列名都没有（理论上不会），直接保存返回
+            df.to_excel(filepath, index=False)
+            return
 
     with pd.ExcelWriter(filepath, engine='openpyxl') as writer:
         df.to_excel(writer, index=False, sheet_name='意向数据')
