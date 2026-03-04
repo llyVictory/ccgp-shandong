@@ -1,0 +1,10 @@
+venv/
+__pycache__/
+*.xlsx
+*.xlsx.bak
+*.log
+.env
+static/output_*.xlsx
+static/shandong_data_*.xlsx
+test_*.py
+schedule_config.json

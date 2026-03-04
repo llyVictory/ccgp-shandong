@@ -352,7 +352,7 @@ class Shandong(object):
         
         # 1. 预加载学校清单（用于本地精筛）
         # 从环境变量读取绝对路径，若无则使用默认相对路径
-        monitor_file = os.getenv("MONITOR_SCHOOLS_PATH", r"d:\LLYWORK\spider\bid_spider\projectC_bid_spider_dev\monitor_schools.xlsx")
+        monitor_file = os.getenv("MONITOR_SCHOOLS_PATH", r"d:\LLYWORK\spider\bid_spider\projectC_bid_spider_v1\monitor_schools.xlsx")
         if not os.path.exists(monitor_file):
             self._log(f"❌ 未找到监控清单文件: {monitor_file}")
             return []
