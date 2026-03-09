@@ -198,7 +198,8 @@ scheduled_task_status = {
 }
 
 class CrawlRequest(BaseModel):
-    area: str = "370000"
+    provincial: bool = True
+    cityCountyAll: bool = True
     startTime: str = ""
     endTime: str = ""
     startPage: int = 1
@@ -208,7 +209,8 @@ class CrawlRequest(BaseModel):
     keywords: str = ""
 
 class ScheduleTaskRequest(BaseModel):
-    area: str = "370000"
+    provincial: bool = True
+    cityCountyAll: bool = True
     hour: int = 0  # 执行时间（小时）
     minute: int = 0  # 执行时间（分钟）
     downloadPath: str = "D:\\spider_downloads"  # 下载路径
@@ -255,13 +257,23 @@ def run_spider_task(task_id: str, req: CrawlRequest):
         spider = Shandong(use_proxy=req.useProxy)
         spider.log_func = log_callback
         
+        # 根据开关生成区域列表
+        area_list = []
+        if req.provincial: area_list.append("370000")
+        if req.cityCountyAll: area_list.append("CITY_COUNTY_ALL")
+        
+        if not area_list:
+            log_callback("❌ 错误: 未选择任何爬取区域（省级/市区县），任务终止。")
+            tasks[task_id]["status"] = "failed"
+            return
+
         data = spider.run(
             max_pages=req.maxPages, 
             start_page=req.startPage,
             title=req.title, 
             start_time=req.startTime, 
             end_time=req.endTime, 
-            area=req.area,
+            area=area_list,
             keywords=split_keywords(req.keywords)
         )
         
@@ -354,7 +366,6 @@ def run_scheduled_spider():
         scheduled_task_status["running"] = False
         return
     
-    area = config.get("area", "370000")
     download_path = config.get("downloadPath", "D:\\spider_downloads_C")
     keywords_str = config.get("keywords", "大学，学校，学院，教育厅，教育电视台，教育招生考试院，电教馆，电化教育馆")
     
@@ -367,19 +378,30 @@ def run_scheduled_spider():
     def log_callback(msg):
         add_log(msg)
     
-    # 执行爬取（今日数据，100页）
+    # 根据配置生成区域列表
+    area_list = []
+    if config.get("provincial", True): area_list.append("370000")
+    if config.get("cityCountyAll", True): area_list.append("CITY_COUNTY_ALL")
+    
+    if not area_list:
+        add_log("❌ 未选择任何爬取区域，跳过执行")
+        scheduled_task_status["running"] = False
+        return
+
+    # 执行爬取（今日数据，由 .env 指定最大页数）
+    max_pages = int(os.getenv("MAX_PAGES", "100"))
     spider = Shandong(use_proxy=False)
     spider.log_func = log_callback  # 设置日志回调
     
-    add_log("开始爬取数据（时间范围: 昨天14:00 ~ 今天14:00，最多100页）...")
+    add_log(f"开始爬取数据（区域: {area_list}, 最大页数: {max_pages}）...")
     
     data = spider.run(
-        max_pages=100,
+        max_pages=max_pages,
         start_page=1,
         title="",
         start_time="0",  # 今日
         end_time="",
-        area=area,
+        area=area_list,
         keywords=split_keywords(keywords_str)
     )
     
@@ -484,7 +506,8 @@ async def create_schedule(req: ScheduleTaskRequest):
     """创建/更新定时任务"""
     # 保存配置
     config = {
-        "area": req.area,
+        "provincial": req.provincial,
+        "cityCountyAll": req.cityCountyAll,
         "hour": req.hour,
         "minute": req.minute,
         "downloadPath": req.downloadPath,

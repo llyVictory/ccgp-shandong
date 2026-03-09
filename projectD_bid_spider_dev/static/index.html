@@ -369,6 +369,18 @@
                         <textarea id="crawlKeywords" placeholder="例如: 大学，学校，学院">大学，学校，学院，教育厅，教育电视台，教育招生考试院，电教馆，电化教育馆</textarea>
                     </div>
 
+                    <div class="form-group">
+                        <label>采集区域（省级与市区县可多选）</label>
+                        <div style="display: flex; gap: 1.5rem; background: #0f172a; padding: 1rem; border-radius: 0.75rem; border: 1px solid #334155;">
+                            <label style="display: flex; align-items: center; gap: 0.75rem; cursor: pointer; margin-bottom: 0;">
+                                <input type="checkbox" id="crawlProvincial" checked> 省级
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 0.75rem; cursor: pointer; margin-bottom: 0;">
+                                <input type="checkbox" id="crawlCityCounty" checked> 市区县-全部
+                            </label>
+                        </div>
+                    </div>
+
                     <div style="margin-bottom: 1.5rem;">
                         <label>快速选择日期范围</label>
                         <div style="display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1rem;">
@@ -403,6 +415,18 @@
                     <div class="form-group">
                         <label>检索关键词（中文逗号分隔）</label>
                         <textarea id="scheduleKeywords" placeholder="例如: 大学，学校，学院">大学，学校，学院，教育厅，教育电视台，教育招生考试院，电教馆，电化教育馆</textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label>采集区域（省级与市区县可多选）</label>
+                        <div style="display: flex; gap: 1.5rem; background: #0f172a; padding: 1rem; border-radius: 0.75rem; border: 1px solid #334155;">
+                            <label style="display: flex; align-items: center; gap: 0.75rem; cursor: pointer; margin-bottom: 0;">
+                                <input type="checkbox" id="scheduleProvincial" checked> 省级
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 0.75rem; cursor: pointer; margin-bottom: 0;">
+                                <input type="checkbox" id="scheduleCityCounty" checked> 市区县-全部
+                            </label>
+                        </div>
                     </div>
 
                     <div class="form-group" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
@@ -552,13 +576,15 @@
                         <div style="color: #22c55e; font-size: 0.95rem; line-height: 1.8;">
                             <div>✓ 定时任务已启用</div>
                             <div>✓ 每天 ${String(data.config.hour).padStart(2, '0')}:${String(data.config.minute).padStart(2, '0')} 执行</div>
-                            <div>✓ 检索词：${data.config.keywords || '大学，学校，学院，教育厅，教育电视台，教育招生考试院，电教馆，电化教育馆'}</div>
-                            <div>✓ 爬取数据：省级+市区县、昨天14:00~今天14:00</div>
+                            <div>✓ 关键词：${data.config.keywords || '大学，学校，学院，教育厅，教育电视台，教育招生考试院，电教馆，电化教育馆'}</div>
+                            <div>✓ 爬取区域：${(data.config.provincial ? '省级' : '') + (data.config.provincial && data.config.cityCountyAll ? '+' : '') + (data.config.cityCountyAll ? '市区县-全部' : '')}</div>
                             <div>✓ 保存路径：${data.config.downloadPath}</div>
                         </div>
                     `;
                         document.getElementById('scheduleInfo').innerHTML = infoHTML;
 
+                        document.getElementById('scheduleProvincial').checked = data.config.provincial !== false;
+                        document.getElementById('scheduleCityCounty').checked = data.config.cityCountyAll !== false;
                         document.getElementById('scheduleHour').value = data.config.hour;
                         document.getElementById('scheduleMinute').value = String(data.config.minute).padStart(2, '0');
                         document.getElementById('downloadPath').value = data.config.downloadPath;
@@ -648,8 +674,22 @@
                     return;
                 }
 
+                const provincial = document.getElementById('crawlProvincial').checked;
+                const cityCountyAll = document.getElementById('crawlCityCounty').checked;
+
+                if (!provincial && !cityCountyAll) {
+                    showStatusMessage('❌ 错误: 请至少选择一个采集区域', 'failed');
+                    return;
+                }
+
+                if (!startTimeValue || !endTimeValue) {
+                    showStatusMessage('请先选择日期范围', 'failed');
+                    return;
+                }
+
                 const payload = {
-                    area: document.getElementById('area').value,
+                    provincial: provincial,
+                    cityCountyAll: cityCountyAll,
                     startTime: String(startTimeValue), // 可能是 "7" 或 "2026-02-23"
                     endTime: endTimeValue,
                     startPage: parseInt(document.getElementById('startPage').value),
@@ -762,8 +802,14 @@
                 const hour = parseInt(document.getElementById('scheduleHour').value);
                 const minute = parseInt(document.getElementById('scheduleMinute').value);
                 const downloadPath = document.getElementById('downloadPath').value.trim();
-                const area = document.getElementById('area').value;
+                const provincial = document.getElementById('scheduleProvincial').checked;
+                const cityCountyAll = document.getElementById('scheduleCityCounty').checked;
                 const keywords = document.getElementById('scheduleKeywords').value.trim();
+
+                if (!provincial && !cityCountyAll) {
+                    showStatusMessage('❌ 错误: 请至少选择一个采集区域', 'failed');
+                    return;
+                }
 
                 if (!downloadPath) {
                     showStatusMessage('提示: 请输入下载保存路径', 'failed');
@@ -774,7 +820,7 @@
                     const resp = await fetch('/api/schedule/create', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ area, hour, minute, downloadPath, keywords })
+                        body: JSON.stringify({ provincial, cityCountyAll, hour, minute, downloadPath, keywords })
                     });
                     const data = await resp.json();
 

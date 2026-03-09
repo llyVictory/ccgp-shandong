@@ -308,11 +308,10 @@ class BrowserEngine:
         time_range_map = { "7": "近7天", "30": "近30天", "180": "近半年", "365": "近一年", "1095": "近三年" }
         
         if start_time == "0":
-            from datetime import datetime, timedelta
-            yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+            from datetime import datetime
             today = datetime.now().strftime("%Y-%m-%d")
-            self._log(f"今日模式策略: 爬取 {yesterday} ~ {today}")
-            self._fill_date_range(yesterday, today)
+            self._log(f"今日模式策略: 仅爬取本日数据 {today}")
+            self._fill_date_range(today, today)
         elif start_time in time_range_map:
             quick_btn_text = time_range_map[start_time]
             try:
@@ -374,9 +373,9 @@ class BrowserEngine:
             return False
 
 
-    def extract_records(self):
+    def extract_records(self, keywords=None):
         """
-        提取当前页列表数据，并点击获取详情页 URL ID
+        提取当前页列表数据，并根据关键词（可选）决定是否点击获取详情页
         """
         records = []
         try:
@@ -436,11 +435,39 @@ class BrowserEngine:
                     
                     area_name = cols[1].text.strip()
                     title = cols[2].text.strip()
-                    # buy_mode = cols[3].text.strip()  # 官方数据为空，已注释
-                    # prj_type = cols[4].text.strip()  # 官方数据为空，已注释
                     pub_date = cols[5].text.strip()
                     
-                    # 点击标题
+                    # [V4.1] 前置拦截逻辑
+                    is_match = False
+                    if keywords:
+                        for kw in keywords:
+                            if kw and kw in title:
+                                is_match = True
+                                break
+                    
+                    # 实时输出扫描状态日志
+                    status_icon = "🎯" if is_match else "➖"
+                    status_text = "命中" if is_match else "跳过"
+                    self._log(f"  {status_icon} {title} [{status_text}]")
+                    
+                    # --- V4.1 修复: 若未命中，通过外层构造空 url 占位记录，让循环能继续进行 ---
+                    if not is_match:
+                        # 构造一个假记录只为让外层的计数和去重能正常工作
+                        rec = {
+                            "id": f"skipped_{i}_{time.time()}", # 假的唯一ID
+                            "title": title,
+                            "areaName": area_name,
+                            "date": pub_date,
+                            "url": "",
+                            "colCode": "2500",
+                            "oldData": "0",
+                            "publishDatetime": "",
+                            "publisher": ""
+                        }
+                        records.append(rec)
+                        continue
+                            
+                    # 命中后，点击标题进入详情
                     # 尝试定位标题元素
                     try:
                         click_target = cols[2].find_element(By.TAG_NAME, "span")
@@ -490,7 +517,6 @@ class BrowserEngine:
                                 publish_datetime = time_raw.replace("发布时间:", "").strip()
                             else:
                                 publish_datetime = time_raw
-                            self._log(f"提取到发布具体时间: {publish_datetime}")
                         except Exception as e:
                             self._log(f"提取发布具体时间失败: {e}")
                         
@@ -589,17 +615,31 @@ class BrowserEngine:
                 time.sleep(random.uniform(2, 3)) # 等待加载
                 
                 # 翻页后可能需要验证码！检测并处理
-                has_captcha = self.solve_captcha(refresh_first=True)
-                if has_captcha:
-                    self._log("翻页后检测到验证码，已自动处理")
-                    # 点击查询按钮
-                    buttons = self.driver.find_elements(By.TAG_NAME, "button")
-                    for btn in buttons:
-                        if btn.text and "查询" in btn.text:
-                            btn.click()
-                            self._log("点击了查询按钮")
-                            time.sleep(random.uniform(1, 2))
+                max_attempts = 5
+                for attempt in range(max_attempts):
+                    has_captcha = self.solve_captcha(refresh_first=True)
+                    if has_captcha:
+                        self._log(f"翻页后检测到验证码，已自动处理 (尝试 {attempt+1}/{max_attempts})")
+                        # 点击查询按钮
+                        buttons = self.driver.find_elements(By.TAG_NAME, "button")
+                        for btn in buttons:
+                            if btn.text and "查询" in btn.text:
+                                btn.click()
+                                self._log("点击了查询按钮")
+                                time.sleep(random.uniform(2, 3))
+                                break
+                        
+                        # 检查是否有错误提示
+                        error = self.check_search_error()
+                        if error == "captcha_error":
+                            self._log("⚠️ 验证码识别错误，正在重试...")
+                            continue
+                        else:
+                            # 没有错误提示，说明可能成功了
                             break
+                    else:
+                        # 没有检测到验证码
+                        break
                 
                 return True
             else:

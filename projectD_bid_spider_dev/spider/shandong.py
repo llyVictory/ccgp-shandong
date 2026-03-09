@@ -146,8 +146,8 @@ class Shandong(object):
             "oldData": 0
         }
         try:
-            # 严格反爬：详情页请求前随机休眠 2-5 秒
-            time.sleep(random.uniform(2.0, 5.0))
+            # 严格反爬
+            time.sleep(random.uniform(1.0, 2.0))
             resp = requests.get(self.detail_url, params=params, headers=self.get_headers(), timeout=20, proxies=self.proxies)
             
             if resp.status_code in [403, 429]:
@@ -342,91 +342,118 @@ class Shandong(object):
             
         return final_rows
 
-    def run(self, max_pages=1, start_page=1, title="", start_time="", end_time="", area="370000", keywords=None):
+    def run(self, max_pages=None, start_page=1, title="", start_time="", end_time="", area="370000", keywords=None):
         from spider.browser_engine import BrowserEngine
         import os
         
+        # 0. 优先从环境变量读取最大页数
+        if max_pages is None:
+            max_pages = int(os.getenv("MAX_PAGES", "100"))
+            
         all_data = []
         self.browser = BrowserEngine(headless=False)
         self.browser.logger = self.log_func
         
-        # 1. 确定聚合搜索模式 (智能分级)
-        # 判断是否为长周期任务（超过3天）
-        # 根据要求：摒弃全量策略，无论时间段，全部使用模糊关键词策略
+        # 1. 策略转换与预警
         if keywords is None:
             keywords = ["大学", "学校", "学院", "教育厅", "教育电视台", "教育招生考试院", "电教馆", "电化教育馆"]
-        self._log(f"当前任务设定 ({start_time}模式): 启用核心词组模糊匹配策略 {keywords}，摒弃全量防止数据量过载")
+        
+        self._log(f"🚀 [V4.0 定制版] 启动列表过滤模式")
+        self._log(f"   本地匹配关键词: {keywords}")
+        
+        # [V4.0] 关键逻辑：强制 title 为空，执行广域搜索
+        search_title = "" 
 
         try:
             self.browser.init_driver()
 
-            search_configs = [
-                {"area": "370000", "desc": "省级"},
-                {"area": "CITY_COUNTY_ALL", "desc": "市区县-全部"}
-            ]
+            # 动态生成搜索配置
+            search_configs = []
+            if isinstance(area, list):
+                if "370000" in area:
+                    search_configs.append({"area": "370000", "desc": "省级"})
+                if "CITY_COUNTY_ALL" in area:
+                    search_configs.append({"area": "CITY_COUNTY_ALL", "desc": "市区县-全部"})
+            else:
+                desc = "省级" if area == "370000" else "市区县-全部"
+                search_configs.append({"area": area, "desc": desc})
             
-            raw_collected_count = 0
-            seen_ids = set() # 用于聚合去重
+            total_scanned = 0
+            total_matched = 0
+            seen_ids = set() # 用于聚合去重 (ID级)
 
             for config in search_configs:
-                for kw in keywords:
-                    self._log(f"=== 聚合抓取开始: 区域=[{config['desc']}] 关键词=[{kw if kw else '空'}] ===")
+                self._log(f"=== 广域扫描开始: 区域=[{config['desc']}] ===")
+                
+                self.browser.goto_search_page()
+                # 使用空标题执行搜索
+                search_success = self.browser.perform_search(title=search_title, start_time=start_time, end_time=end_time, area=config["area"])
+                
+                if not search_success and not self.browser.is_no_data_visible():
+                    self._log("❌ 搜索执行异常且未确认无数据。")
+                    self._log("❌ 为保证数据完整度，杜绝产出带有遗漏的“残缺结果”，将立刻强行终止整个抓取任务！")
+                    raise RuntimeError("关键搜索执行失败，放弃本次完整抓取任务。")
+                        
+                current_page_idx = 1
+                while current_page_idx <= max_pages:
+                    self._log(f"--- 扫描列表: [{config['desc']}] 第 {current_page_idx} 页 ---")
                     
-                    self.browser.goto_search_page()
-                    search_success = self.browser.perform_search(title=kw, start_time=start_time, end_time=end_time, area=config["area"])
+                    records = self.browser.extract_records(keywords=keywords)
+                    if not records:
+                        if self.browser.is_no_data_visible():
+                            self._log("页面提示暂无数据，此区域扫描结束。")
+                            break
+                        else:
+                            self._log("未检测到记录，可能加载失败，跳过。")
+                            break
                     
-                    if not search_success and not self.browser.is_no_data_visible():
-                        self._log("❌ 搜索执行异常且未确认无数据（如连续验证码识别失败）。")
-                        self._log("❌ 为保证数据完整度，杜绝产出带有遗漏的“残缺结果”，将立刻强行终止整个抓取任务！")
-                        raise RuntimeError("关键搜索执行失败，放弃本次完整抓取任务。")
+                    # [V4.0] 本地标题精筛逻辑
+                    printed_parse_header = False
+                    for rec in records:
+                        rec_id = rec.get('id')
+                        rec_title = rec.get('title', '')
+                        total_scanned += 1
                         
-                    current_page_idx = 1
-                    while current_page_idx <= max_pages:
-                        self._log(f"--- 抓取翻页: 第 {current_page_idx} 页 ---")
-                        
-                        records = self.browser.extract_records()
-                        if not records:
-                            # 判定是否真的结束了
-                            if self.browser.is_no_data_visible():
-                                self._log("页面提示暂无数据，此搜索结束。")
-                                break
-                            else:
-                                self._log("未检测到记录，可能加载失败，跳过。")
+                        if rec_id in seen_ids:
+                            continue 
+                            
+                        # 检查标题是否包含任一关键词 (命中逻辑)
+                        is_match = False
+                        for kw in keywords:
+                            if kw and kw in rec_title:
+                                is_match = True
                                 break
                         
-                        # 本地精筛与数据注入
-                        for rec in records:
-                            rec_id = rec.get('id')
-                            if rec_id in seen_ids:
-                                continue # 重复数据跳过
-                                
-                            # 详情解析（这里进入详情页获取具体表格）
+                        if is_match:
+                            total_matched += 1
+                            if not printed_parse_header:
+                                self._log(f"--- 解析命中数据: [{config['desc']}] 第 {current_page_idx} 页 ---")
+                                printed_parse_header = True
+                            # 只有命中标题的项目才去解析详情页表格
                             details = self.process_item(rec)
                             for detail in details:
                                 all_data.append(detail)
+                            self._log(f"[{rec.get('areaName', '未知')}] 解析完成: {rec_title}")
                             seen_ids.add(rec_id)
-                            self._log(f"🎯 提取数据: {rec.get('title')}")
-                            
-                            raw_collected_count += 1
-                        
-                        if not self.browser.next_page() or current_page_idx >= max_pages:
-                            break
-                        current_page_idx += 1
-                        
-                    # 抓取完一个组合留一点间隔
-                    time.sleep(random.uniform(2, 4))
+                        else:
+                            # 未命中的项目仅记录 ID 防止重复扫描，但不解析详情
+                            seen_ids.add(rec_id)
+                    
+                    if not self.browser.next_page() or current_page_idx >= max_pages:
+                        break
+                    current_page_idx += 1
+                    
+                # 区域间留间歇
+                time.sleep(random.uniform(2, 4))
                 
-            self._log(f"聚合抓取结束。原始扫描: {raw_collected_count} 条，匹配目标: {len(all_data)} 条。")
+            self._log(f"📊 扫描完成。共扫描: {total_scanned} 条，命中标题: {total_matched} 条。")
+            
                     
         except RuntimeError as re:
-            # 捕获我们自己主动抛出的阻断性异常（如连续5次验证码失败）
             self._log(f"🚨 严重错误中断: {re}")
-            # 必须清空所有已抓取的数据，强制生成一份全空只有表头的文件
-            self._log("🗑️ 已清空当前抓取的所有部分数据，确保只产生空表头。")
             all_data = []
         except Exception as e:
             self._log(f"爬虫运行异常: {e}")
-            # 如果是意外报错，原逻辑不变，依然保留已抓取的数据并退出循环
         finally:
             if self.browser:
                 self._log("任务结束，关闭浏览器...")
@@ -434,6 +461,7 @@ class Shandong(object):
                 self.browser = None
             
         return all_data
+
 
 if __name__ == "__main__":
     s = Shandong()
