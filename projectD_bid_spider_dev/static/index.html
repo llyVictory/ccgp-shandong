@@ -66,7 +66,8 @@
         }
 
         select,
-        input {
+        input,
+        textarea {
             width: 100%;
             padding: 1rem;
             font-size: 1.1rem;
@@ -77,6 +78,7 @@
             box-sizing: border-box;
             outline: none;
             transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            font-family: inherit;
         }
 
         select {
@@ -92,7 +94,8 @@
         }
 
         select:hover,
-        input:hover {
+        input:hover,
+        textarea:hover {
             border-color: #475569;
             background-color: #1e293b;
         }
@@ -112,10 +115,17 @@
         }
 
         select:focus,
-        input:focus {
+        input:focus,
+        textarea:focus {
             border-color: var(--primary);
             background-color: #1e293b;
             box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.2);
+        }
+
+        textarea {
+            min-height: 100px;
+            resize: vertical;
+            line-height: 1.5;
         }
 
         /* --- Custom Dropdown UI --- */
@@ -324,108 +334,149 @@
 
 <body>
     <div class="container">
-        <h1>山东政采爬虫控制台</h1>
-        <div class="form-group">
+        <h1>山东政采爬虫控制台C</h1>
+        <div class="form-group" style="display: none;">
             <label>省级 / 市区县</label>
             <select id="area">
                 <option value="370000">山东省本级</option>
-                <option value="370100">济南市</option>
-                <option value="370200">青岛市</option>
-                <option value="370300">淄博市</option>
-                <option value="370400">枣庄市</option>
-                <option value="370500">东营市</option>
-                <option value="370600">烟台市</option>
-                <option value="370700">潍坊市</option>
-                <option value="370800">济宁市</option>
-                <option value="370900">泰安市</option>
-                <option value="371000">威海市</option>
-                <option value="371100">日照市</option>
-                <option value="371300">临沂市</option>
-                <option value="371400">德州市</option>
-                <option value="371500">聊城市</option>
-                <option value="371600">滨州市</option>
-                <option value="371700">菏泽市</option>
             </select>
         </div>
         <div class="form-group">
-            <!-- 时间范围固定为"今日" -->
-            <div class="form-group" style="display: none;">
-                <label>快速时间范围</label>
-                <select id="quickTime">
-                    <option value="0" selected>今日</option>
-                </select>
-            </div>
-            <div id="customTimeRange" style="display: none; gap: 1rem; grid-template-columns: 1fr 1fr;">
-                <div class="form-group">
-                    <label>开始日期</label>
-                    <input type="date" id="startTime">
+            <div
+                style="padding: 1.5rem; background: rgba(99, 102, 241, 0.1); border-left: 4px solid var(--primary); border-radius: 0.75rem; margin-bottom: 2rem;">
+                <div style="color: var(--primary); font-size: 1.1rem; font-weight: 600; margin-bottom: 0.5rem;">自动任务模式
                 </div>
-                <div class="form-group">
-                    <label>结束日期</label>
-                    <input type="date" id="endTime">
+                <div style="color: #94a3b8; font-size: 0.95rem; line-height: 1.6;">
+                    系统将统一使用模糊关键词进行检索，
+                    在<strong>省级</strong>和<strong>市区县-全部</strong>两个路径进行快速抓取全量数据。
                 </div>
             </div>
-            <!-- <div
-                style="padding: 0.75rem; background: rgba(59, 130, 246, 0.1); border-left: 3px solid #3b82f6; border-radius: 0.5rem; margin-bottom: 1rem;">
-                <div style="color: #60a5fa; font-size: 0.9rem; font-weight: 500;">爬取范围：今日数据（最多100页）</div>
-            </div> -->
-
-            <!-- 隐藏的爬取页数配置（固定值） -->
+            <!-- 隐藏的配置（固定值） -->
             <input type="hidden" id="startPage" value="1">
             <input type="hidden" id="maxPages" value="100">
             <input type="checkbox" id="useProxy" style="display: none;">
 
-            <!-- 定时任务配置 -->
-            <div
-                style="margin-top: 2rem; padding: 1.5rem; background: rgba(59, 130, 246, 0.05); border: 1px solid rgba(59, 130, 246, 0.2); border-radius: 0.75rem;">
-                <h3 style="margin: 0 0 1rem 0; color: #60a5fa; font-size: 1.1rem;"> 定时任务配置</h3>
-                <div class="form-group" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
-                    <div>
-                        <label>执行时间（时）</label>
-                        <input type="number" id="scheduleHour" value="16" min="0" max="23" placeholder="0-23"
-                            style="text-align: center;">
+            <!-- 任务配置区域：双栏布局 -->
+            <div class="task-grid"
+                style="display: flex; gap: 1.5rem; margin-top: 1.5rem; flex-wrap: wrap; align-items: start;">
+                <!-- 一次性任务配置（左侧） -->
+                <div
+                    style="flex: 1; min-width: 450px; padding: 1.5rem; background: rgba(139, 92, 246, 0.05); border: 1px solid rgba(139, 92, 246, 0.2); border-radius: 0.75rem;">
+                    <h3 style="margin: 0 0 1rem 0; color: #a78bfa; font-size: 1.1rem;">一次性任务配置</h3>
+
+                    <div class="form-group">
+                        <label>检索关键词（中文逗号分隔）</label>
+                        <textarea id="crawlKeywords" placeholder="例如: 大学，学校，学院">大学，学校，学院，教育厅，教育电视台，教育招生考试院，电教馆，电化教育馆</textarea>
                     </div>
-                    <div>
-                        <label>执行时间（分）</label>
-                        <input type="text" id="scheduleMinute" value="00" pattern="[0-5][0-9]" maxlength="2"
-                            placeholder="00-59" style="text-align: center;">
+
+                    <div style="margin-bottom: 1.5rem;">
+                        <label>快速选择日期范围</label>
+                        <div style="display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1rem;">
+                            <button class="time-preset-btn" onclick="updateDatesByQuickRange(0, this)">今日</button>
+                            <button class="time-preset-btn" onclick="updateDatesByQuickRange(7, this)">近7天</button>
+                            <button class="time-preset-btn" onclick="updateDatesByQuickRange(30, this)">近30天</button>
+                            <button class="time-preset-btn" onclick="updateDatesByQuickRange(180, this)">近半年</button>
+                            <button class="time-preset-btn" onclick="updateDatesByQuickRange(365, this)">近一年</button>
+                            <button class="time-preset-btn" onclick="updateDatesByQuickRange(1095, this)">近三年</button>
+                        </div>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                            <div>
+                                <label>开始日期</label>
+                                <input type="date" id="startTime">
+                            </div>
+                            <div>
+                                <label>结束日期</label>
+                                <input type="date" id="endTime">
+                            </div>
+                        </div>
                     </div>
+
+                    <button id="startBtn"
+                        style="margin-top: 0; background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);">立即执行一次性获取任务</button>
                 </div>
-                <div class="form-group">
-                    <label>下载保存路径</label>
-                    <input type="text" id="downloadPath" value="D:\spider_downloads"
-                        placeholder="例如: D:\spider_downloads">
-                </div>
-                <div style="color: #94a3b8; font-size: 0.85rem; margin-top: 0.5rem;">
-                    定时任务将每天固定时间执行，数据来源时间范围为"昨天14:00 ~ 今天14:00"，并自动保存到指定路径
+
+                <!-- 定时任务配置（右侧） -->
+                <div
+                    style="flex: 1; min-width: 450px; padding: 1.5rem; background: rgba(59, 130, 246, 0.05); border: 1px solid rgba(59, 130, 246, 0.2); border-radius: 0.75rem;">
+                    <h3 style="margin: 0 0 1rem 0; color: #60a5fa; font-size: 1.1rem;">定时任务配置</h3>
+
+                    <div class="form-group">
+                        <label>检索关键词（中文逗号分隔）</label>
+                        <textarea id="scheduleKeywords" placeholder="例如: 大学，学校，学院">大学，学校，学院，教育厅，教育电视台，教育招生考试院，电教馆，电化教育馆</textarea>
+                    </div>
+
+                    <div class="form-group" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                        <div>
+                            <label>执行时间（时）</label>
+                            <input type="number" id="scheduleHour" value="16" min="0" max="23" placeholder="0-23"
+                                style="text-align: center;">
+                        </div>
+                        <div>
+                            <label>执行时间（分）</label>
+                            <input type="text" id="scheduleMinute" value="00" pattern="[0-5][0-9]" maxlength="2"
+                                placeholder="00-59" style="text-align: center;">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>下载保存路径</label>
+                        <input type="text" id="downloadPath" value="D:\spider_downloads"
+                            placeholder="例如: D:\spider_downloads">
+                    </div>
+                    <div style="color: #94a3b8; font-size: 0.85rem; margin-top: 0.5rem; margin-bottom: 1rem;">
+                        定时任务将每天固定时间执行，并自动保存到指定路径
+                    </div>
+
+                    <!-- 当前定时任务状态 -->
+                    <div id="scheduleStatus"
+                        style="display: none; margin-bottom: 1.5rem; padding: 1.25rem; background: linear-gradient(135deg, rgba(34, 197, 94, 0.08) 0%, rgba(34, 197, 94, 0.12) 100%); border: 1px solid rgba(34, 197, 94, 0.25); border-radius: 0.75rem; box-shadow: 0 2px 8px rgba(34, 197, 94, 0.1);">
+                        <div style="display: grid; grid-template-columns: 6fr 4fr; gap: 1.5rem; align-items: center;">
+                            <div id="scheduleInfo" style="color: #64748b; font-size: 0.9rem; line-height: 1.5;"></div>
+                            <div style="display: flex; justify-content: flex-end;">
+                                <button id="deleteScheduleBtn"
+                                    style="padding: 0.75rem 1.5rem; background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); border: none; color: white; border-radius: 0.5rem; cursor: pointer; font-size: 0.875rem; font-weight: 500; transition: all 0.2s; white-space: nowrap; box-shadow: 0 2px 4px rgba(239, 68, 68, 0.2);"
+                                    onmouseover="this.style.transform='translateY(-1px)'; this.style.boxShadow='0 4px 8px rgba(239, 68, 68, 0.3)'"
+                                    onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 2px 4px rgba(239, 68, 68, 0.2)'">删除</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <button id="createScheduleBtn" style="margin-top: 0;">创建/更新定时任务</button>
                 </div>
             </div>
 
-            <!-- 当前定时任务状态 -->
-            <div id="scheduleStatus"
-                style="display: none; margin-top: 1rem; padding: 1.25rem; background: linear-gradient(135deg, rgba(34, 197, 94, 0.08) 0%, rgba(34, 197, 94, 0.12) 100%); border: 1px solid rgba(34, 197, 94, 0.25); border-radius: 0.75rem; box-shadow: 0 2px 8px rgba(34, 197, 94, 0.1);">
-                <div style="display: grid; grid-template-columns: 6fr 4fr; gap: 1.5rem; align-items: center;">
-                    <div id="scheduleInfo" style="color: #64748b; font-size: 0.9rem; line-height: 1.5;"></div>
-                    <div style="display: flex; justify-content: flex-end;">
-                        <button id="deleteScheduleBtn"
-                            style="padding: 0.75rem 1.5rem; background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); border: none; color: white; border-radius: 0.5rem; cursor: pointer; font-size: 0.875rem; font-weight: 500; transition: all 0.2s; white-space: nowrap; box-shadow: 0 2px 4px rgba(239, 68, 68, 0.2);"
-                            onmouseover="this.style.transform='translateY(-1px)'; this.style.boxShadow='0 4px 8px rgba(239, 68, 68, 0.3)'"
-                            onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 2px 4px rgba(239, 68, 68, 0.2)'">删除</button>
-                    </div>
-                </div>
-            </div>
+            <style>
+                .time-preset-btn {
+                    width: auto;
+                    margin: 0;
+                    padding: 0.4rem 0.8rem;
+                    font-size: 0.85rem;
+                    background: rgba(167, 139, 250, 0.1);
+                    color: #a78bfa;
+                    border: 1px solid rgba(167, 139, 250, 0.3);
+                    border-radius: 0.5rem;
+                    cursor: pointer;
+                    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+                }
 
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 1.5rem;">
-                <button id="createScheduleBtn">创建/更新定时任务</button>
-                <button id="startBtn"
-                    style="background: linear-gradient(135deg, #64748b 0%, #475569 100%);">立即执行一次</button>
-            </div>
+                .time-preset-btn:hover {
+                    background: rgba(167, 139, 250, 0.2);
+                    border-color: #a78bfa;
+                }
+
+                .time-preset-btn.active {
+                    background: var(--primary);
+                    color: white;
+                    border-color: var(--primary);
+                    box-shadow: 0 0 12px rgba(99, 102, 241, 0.5);
+                    font-weight: 500;
+                }
+            </style>
 
             <div id="status"></div>
             <div id="logConsole">
                 <div
                     style="font-size: 0.75rem; color: #64748b; margin-bottom: 0.5rem; display: flex; justify-content: space-between;">
-                    <span>实时日志</span>
+                    <span id="logTitle">实时日志</span>
                     <span id="logCount">0 lines</span>
                 </div>
                 <div id="logContent"></div>
@@ -501,7 +552,8 @@
                         <div style="color: #22c55e; font-size: 0.95rem; line-height: 1.8;">
                             <div>✓ 定时任务已启用</div>
                             <div>✓ 每天 ${String(data.config.hour).padStart(2, '0')}:${String(data.config.minute).padStart(2, '0')} 执行</div>
-                            <div>✓ 爬取数据：省级、昨天14:00~今天14:00</div>
+                            <div>✓ 检索词：${data.config.keywords || '大学，学校，学院，教育厅，教育电视台，教育招生考试院，电教馆，电化教育馆'}</div>
+                            <div>✓ 爬取数据：省级+市区县、昨天14:00~今天14:00</div>
                             <div>✓ 保存路径：${data.config.downloadPath}</div>
                         </div>
                     `;
@@ -510,6 +562,7 @@
                         document.getElementById('scheduleHour').value = data.config.hour;
                         document.getElementById('scheduleMinute').value = String(data.config.minute).padStart(2, '0');
                         document.getElementById('downloadPath').value = data.config.downloadPath;
+                        document.getElementById('scheduleKeywords').value = data.config.keywords || '大学，学校，学院，教育厅，教育电视台，教育招生考试院，电教馆，电化教育馆';
                     } else {
                         document.getElementById('scheduleStatus').style.display = 'none';
                     }
@@ -520,22 +573,42 @@
 
             loadScheduleStatus(); // 初始化时加载
 
-            quickTime.onchange = () => {
-                if (quickTime.value === 'custom') {
-                    customTimeRange.style.display = 'grid';
+            function updateDatesByQuickRange(days, btnElement = null) {
+                // 更新高亮状态
+                document.querySelectorAll('.time-preset-btn').forEach(btn => btn.classList.remove('active'));
+                if (btnElement) {
+                    btnElement.classList.add('active');
                 } else {
-                    customTimeRange.style.display = 'none';
-                    updateDatesByQuickRange(parseInt(quickTime.value));
+                    // 默认情况，根据传入的 days 寻找匹配的按钮高亮
+                    const buttons = document.querySelectorAll('.time-preset-btn');
+                    const indexMap = { 0: 0, 7: 1, 30: 2, 180: 3, 365: 4, 1095: 5 };
+                    if (indexMap[days] !== undefined && buttons[indexMap[days]]) {
+                        buttons[indexMap[days]].classList.add('active');
+                    }
                 }
-            };
 
-            function updateDatesByQuickRange(days) {
                 const end = new Date();
                 const start = new Date();
-                start.setDate(end.getDate() - days);
+                
+                // [修复逻辑] 
+                // 如果是“今日”，days 为 0，start 和 end 都设为今天日期字符串。
+                // 这样发送到后端时，dataset.quickRange 为 "0"，后端会触发 昨天14:00~今天14:00 的聚合逻辑。
+                if (days > 0) {
+                    start.setDate(end.getDate() - (days - 1));
+                }
 
-                document.getElementById('startTime').value = start.toISOString().split('T')[0];
-                document.getElementById('endTime').value = end.toISOString().split('T')[0];
+                const formatDate = (date) => {
+                    const year = date.getFullYear();
+                    const month = String(date.getMonth() + 1).padStart(2, '0');
+                    const day = String(date.getDate()).padStart(2, '0');
+                    return `${year}-${month}-${day}`;
+                };
+
+                document.getElementById('startTime').value = formatDate(start);
+                document.getElementById('endTime').value = formatDate(end);
+
+                // 保存原始的 days 值到 startTime.dataset
+                document.getElementById('startTime').dataset.quickRange = String(days);
             }
 
             // 简单的状态提示辅助函数
@@ -549,28 +622,41 @@
                 }, 3000);
             }
 
-            startBtn.onclick = async () => {
-                const quickTimeValue = document.getElementById('quickTime').value;
-                let startTime, endTime;
+            // 如果用户手动修改了日期，就清除快捷代码标识并取消按钮高亮
+            const clearQuickRange = () => {
+                delete document.getElementById('startTime').dataset.quickRange;
+                document.querySelectorAll('.time-preset-btn').forEach(btn => btn.classList.remove('active'));
+            };
+            document.getElementById('startTime').oninput = clearQuickRange;
+            document.getElementById('endTime').oninput = clearQuickRange;
+            document.getElementById('startTime').onchange = clearQuickRange;
+            document.getElementById('endTime').onchange = clearQuickRange;
+            document.getElementById('endTime').oninput = clearQuickRange;
 
-                if (quickTimeValue === 'custom') {
-                    // 自定义日期，传实际日期字符串
-                    startTime = document.getElementById('startTime').value;
-                    endTime = document.getElementById('endTime').value;
-                } else {
-                    // 快捷选项，传快捷代码（后端会点击对应按钮）
-                    startTime = quickTimeValue; // "0", "7", "30", "180", "365", "1095"
-                    endTime = "";
+            startBtn.onclick = async () => {
+                const startTimeInput = document.getElementById('startTime');
+                const endTimeInput = document.getElementById('endTime');
+                const keywords = document.getElementById('crawlKeywords').value.trim();
+
+                // 核心逻辑：如果 dataset.quickRange 存在，优先发送快捷代码
+                // 这样后端 shandong.py 才能触发对应的“智能聚合模式”
+                const startTimeValue = startTimeInput.dataset.quickRange || startTimeInput.value;
+                const endTimeValue = endTimeInput.value;
+
+                if (!startTimeValue || !endTimeValue) {
+                    showStatusMessage('请先选择日期范围', 'failed');
+                    return;
                 }
 
                 const payload = {
                     area: document.getElementById('area').value,
-                    startTime: startTime,
-                    endTime: endTime,
+                    startTime: String(startTimeValue), // 可能是 "7" 或 "2026-02-23"
+                    endTime: endTimeValue,
                     startPage: parseInt(document.getElementById('startPage').value),
                     maxPages: parseInt(document.getElementById('maxPages').value),
-                    title: document.getElementById('keyword').value,
-                    useProxy: document.getElementById('useProxy').checked
+                    title: "",
+                    useProxy: document.getElementById('useProxy').checked,
+                    keywords: keywords
                 };
 
                 startBtn.disabled = true;
@@ -603,6 +689,8 @@
                 try {
                     const resp = await fetch('/api/status/' + currentTaskId);
                     const result = await resp.json();
+
+                    document.getElementById('logTitle').innerText = '当前任务：一次性获取任务';
 
                     // Update logs
                     if (result.logs) {
@@ -637,12 +725,45 @@
                 }
             }
 
+            // 新增：定时任务日志轮询
+            async function pollScheduledLogs() {
+                try {
+                    const resp = await fetch('/api/schedule/logs');
+                    const data = await resp.json();
+
+                    if (data.status && data.status.running) {
+                        logConsole.style.display = 'block';
+                        document.getElementById('logTitle').innerText = '当前任务：自动定时任务';
+
+                        if (data.logs) {
+                            logCount.innerText = data.logs.length + ' lines';
+                            logContent.innerHTML = data.logs.map(line => {
+                                const urlMatch = line.match(/(http:\/\/[^\s]+)/);
+                                if (urlMatch) {
+                                    const url = urlMatch[1];
+                                    return `<div class="log-entry">${line.replace(url, `<span class="log-url" onclick="window.open('${url}', '_blank')">${url}</span>`)}</div>`;
+                                }
+                                return `<div class="log-entry">${line}</div>`;
+                            }).join('');
+                            logContent.scrollTop = logContent.scrollHeight;
+                        }
+                    }
+                } catch (e) {
+                    console.error('拉取定时任务日志失败:', e);
+                }
+                // 每3秒轮询一次
+                setTimeout(pollScheduledLogs, 3000);
+            }
+
+            pollScheduledLogs(); // 启动定时轮询
+
             // 创建定时任务
             createScheduleBtn.onclick = async () => {
                 const hour = parseInt(document.getElementById('scheduleHour').value);
                 const minute = parseInt(document.getElementById('scheduleMinute').value);
                 const downloadPath = document.getElementById('downloadPath').value.trim();
                 const area = document.getElementById('area').value;
+                const keywords = document.getElementById('scheduleKeywords').value.trim();
 
                 if (!downloadPath) {
                     showStatusMessage('提示: 请输入下载保存路径', 'failed');
@@ -653,7 +774,7 @@
                     const resp = await fetch('/api/schedule/create', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ area, hour, minute, downloadPath })
+                        body: JSON.stringify({ area, hour, minute, downloadPath, keywords })
                     });
                     const data = await resp.json();
 

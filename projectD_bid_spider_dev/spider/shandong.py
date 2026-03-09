@@ -29,6 +29,7 @@ class Shandong(object):
             }
         
         self.log_func = None
+        self.browser = None
         
         # 仅在启用代理时检查状态
         if self.use_proxy:
@@ -341,119 +342,132 @@ class Shandong(object):
             
         return final_rows
 
-    def run(self, max_pages=1, start_page=1, title="", start_time="", end_time="", area="370000"):
+    def run(self, max_pages=1, start_page=1, title="", start_time="", end_time="", area="370000", keywords=None):
         from spider.browser_engine import BrowserEngine
+        import os
         
         all_data = []
-        self.browser = BrowserEngine(headless=False) # GUI 模式以便通过验证码
-        self.browser.logger = self.log_func # 传递日志函数
+        self.browser = BrowserEngine(headless=False)
+        self.browser.logger = self.log_func
         
+        # 1. 确定聚合搜索模式 (智能分级)
+        # 判断是否为长周期任务（超过3天）
+        # 根据要求：摒弃全量策略，无论时间段，全部使用模糊关键词策略
+        if keywords is None:
+            keywords = ["大学", "学校", "学院", "教育厅", "教育电视台", "教育招生考试院", "电教馆", "电化教育馆"]
+        self._log(f"当前任务设定 ({start_time}模式): 启用核心词组模糊匹配策略 {keywords}，摒弃全量防止数据量过载")
+
         try:
             self.browser.init_driver()
+
+            search_configs = [
+                {"area": "370000", "desc": "省级"},
+                {"area": "CITY_COUNTY_ALL", "desc": "市区县-全部"}
+            ]
             
-            # 1. 导航并搜索
-            self.browser.goto_search_page()
-            self.browser.perform_search(title, start_time, end_time, area)
-            
-            # 2. 如果起始页不是1，跳转
-            if start_page > 1:
-                success = self.browser.jump_to_page(start_page)
-                if not success:
-                    self._log(f"跳转到第 {start_page} 页失败，将从当前页开始")
-            
-            # 3. 循环爬取
-            pages_crawled = 0
-            current_page_idx = start_page
-            
-            while pages_crawled < max_pages:
-                self._log(f"--- 正在处理第 {current_page_idx} 页 ---")
-                
-                # 提取列表 (无限重试机制：空白数据一定是验证码问题)
-                records = self.browser.extract_records()
-                
-                rescue_attempts = 0
-                max_rescue_attempts = 5  # ✅ 最多重试5次验证码,避免无限循环
-                
-                while not records and rescue_attempts < max_rescue_attempts:
-                    rescue_attempts += 1
-                    self._log(f"第 {current_page_idx} 页未检测到数据，执行验证码重试 (第 {rescue_attempts} 次)...")
+            raw_collected_count = 0
+            seen_ids = set() # 用于聚合去重
+
+            for config in search_configs:
+                for kw in keywords:
+                    self._log(f"=== 聚合抓取开始: 区域=[{config['desc']}] 关键词=[{kw if kw else '空'}] ===")
                     
-                    # 重新执行全量搜索逻辑 (Tab -> 参数 -> 刷新验证码 -> 识别 -> 查询)
-                    self.browser.perform_search(title, start_time, end_time, area)
+                    self.browser.goto_search_page()
+                    search_success = self.browser.perform_search(title=kw, start_time=start_time, end_time=end_time, area=config["area"])
                     
-                    # 检查当前页码，只有不在目标页时才跳转
-                    current_page_in_browser = self.browser.get_current_page()
-                    if current_page_in_browser != current_page_idx:
-                        self._log(f"当前页码 {current_page_in_browser}，需要跳转到第 {current_page_idx} 页...")
-                        self.browser.jump_to_page(current_page_idx)
-                    else:
-                        self._log(f"当前已在第 {current_page_idx} 页，无需跳转")
+                    if not search_success and not self.browser.is_no_data_visible():
+                        self._log("❌ 搜索执行异常且未确认无数据（如连续验证码识别失败）。")
+                        self._log("❌ 为保证数据完整度，杜绝产出带有遗漏的“残缺结果”，将立刻强行终止整个抓取任务！")
+                        raise RuntimeError("关键搜索执行失败，放弃本次完整抓取任务。")
+                        
+                    current_page_idx = 1
+                    while current_page_idx <= max_pages:
+                        self._log(f"--- 抓取翻页: 第 {current_page_idx} 页 ---")
+                        
+                        records = self.browser.extract_records()
+                        if not records:
+                            # 判定是否真的结束了
+                            if self.browser.is_no_data_visible():
+                                self._log("页面提示暂无数据，此搜索结束。")
+                                break
+                            else:
+                                self._log("未检测到记录，可能加载失败，跳过。")
+                                break
+                        
+                        # 本地精筛与数据注入
+                        for rec in records:
+                            rec_id = rec.get('id')
+                            if rec_id in seen_ids:
+                                continue # 重复数据跳过
+                                
+                            # 详情解析（这里进入详情页获取具体表格）
+                            details = self.process_item(rec)
+                            for detail in details:
+                                all_data.append(detail)
+                            seen_ids.add(rec_id)
+                            self._log(f"🎯 提取数据: {rec.get('title')}")
+                            
+                            raw_collected_count += 1
+                        
+                        if not self.browser.next_page() or current_page_idx >= max_pages:
+                            break
+                        current_page_idx += 1
+                        
+                    # 抓取完一个组合留一点间隔
+                    time.sleep(random.uniform(2, 4))
+                
+            self._log(f"聚合抓取结束。原始扫描: {raw_collected_count} 条，匹配目标: {len(all_data)} 条。")
                     
-                    # 再次尝试提取
-                    records = self.browser.extract_records()
-                
-                if not records:
-                    self._log(f"⚠️ 已重试 {max_rescue_attempts} 次验证码仍无数据")
-                    
-                    # 🔥 关键优化：第一页无数据直接退出,认为今日无数据
-                    if current_page_idx == start_page:
-                        self._log(f"✅ 第一页在 {max_rescue_attempts} 次重试后仍无数据，判定为今日无数据，停止爬取")
-                        break
-                    
-                    # 非第一页则跳过继续
-                    self._log(f"跳过第 {current_page_idx} 页，继续下一页")
-                    pages_crawled += 1
-                    current_page_idx += 1
-                    if not self.browser.next_page():
-                        self._log("无法点击下一页，停止爬取")
-                        break
-                    continue
-                
-                # 详情页处理 (保持并发)
-                # 注意：BrowserEngine 已经提取了 ID，我们继续用 requests 并发获取详情
-                # 为了保持 session 状态 (Cookies)，我们可以尝试让 requests 使用 browser 的 cookies
-                # 但目前详情页 API 似乎不需要 cookie 或者不敏感？
-                # 如果需要，可以: s = requests.Session(); s.cookies.update(...)
-                
-                if records:
-                    with ThreadPoolExecutor(max_workers=2) as executor:
-                        futures = [executor.submit(self.process_item, rec) for rec in records]
-                        for f in futures:
-                            res = f.result()
-                            if res: all_data.extend(res)
-                
-                pages_crawled += 1
-                if pages_crawled >= max_pages:
-                    break
-                
-                # 翻页
-                if not self.browser.next_page():
-                    self._log("无法点击下一页，停止爬取")
-                    break
-                    
-                current_page_idx += 1
-                
+        except RuntimeError as re:
+            # 捕获我们自己主动抛出的阻断性异常（如连续5次验证码失败）
+            self._log(f"🚨 严重错误中断: {re}")
+            # 必须清空所有已抓取的数据，强制生成一份全空只有表头的文件
+            self._log("🗑️ 已清空当前抓取的所有部分数据，确保只产生空表头。")
+            all_data = []
         except Exception as e:
             self._log(f"爬虫运行异常: {e}")
+            # 如果是意外报错，原逻辑不变，依然保留已抓取的数据并退出循环
         finally:
             if self.browser:
-                self._log("任务结束，5秒后自动关闭浏览器...")
-                time.sleep(5)
+                self._log("任务结束，关闭浏览器...")
                 self.browser.close()
                 self.browser = None
-                self._log("✅ 浏览器已关闭")
             
         return all_data
 
 if __name__ == "__main__":
     s = Shandong()
-    data = s.run(max_pages=2) # Test run
+    # 测试运行前 2 页（空关键词模式）
+    data = s.run(max_pages=2, start_time="0") 
     df = pd.DataFrame(data)
-    # Reorder columns
-    cols = ["序号", "分类1", "分类2", "地市", "客户名称", "项目名称", "金额", "预计时间", "意向发布地址"]
-    # Adjust 序号 to be global
-    df['序号'] = range(1, len(df) + 1)
-    df = df[cols]
-    print(df.head())
-    df.to_excel("shandong_bid.xlsx", index=False)
-    print("Saved to shandong_bid.xlsx")
+    if not df.empty:
+        # 统一 Project C 的列名
+        cols = [
+            "序号", "地区", "标题", "发布时间", "发布人",
+            "子序号", "采购项目名称", "采购需求概况", "预算金额(万元)",
+            "拟面向中小企业预留", "预计采购时间", "备注", "意向发布地址"
+        ]
+        # 补齐可能缺失的列
+        for col in cols:
+            if col not in df.columns:
+                df[col] = ""
+        
+        df['序号'] = range(1, len(df) + 1)
+        df = df[cols]
+        print(df.head())
+        df.to_excel("shandong_bid_C_test.xlsx", index=False)
+        print("测试数据已保存到 shandong_bid_C_test.xlsx")
+    else:
+        print("未抓取到任何符合目标的数据。")
+        # 即使无数据，也按要求生成空 Excel 并在第一个格子写入“无数据”
+        cols = [
+            "序号", "地区", "标题", "发布时间", "发布人",
+            "子序号", "采购项目名称", "采购需求概况", "预算金额(万元)",
+            "拟面向中小企业预留", "预计采购时间", "备注", "意向发布地址"
+        ]
+        df = pd.DataFrame(columns=cols)
+        empty_row = {col: "" for col in cols}
+        empty_row[cols[0]] = "无数据"
+        df = pd.DataFrame([empty_row])
+        df.to_excel("shandong_bid_C_test.xlsx", index=False)
+        print("已生成包含‘无数据’标记的空 Excel 文件: shandong_bid_C_test.xlsx")
