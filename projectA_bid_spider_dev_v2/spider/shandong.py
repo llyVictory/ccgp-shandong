@@ -343,112 +343,105 @@ class Shandong(object):
 
     def run(self, max_pages=1, start_page=1, title="", start_time="", end_time="", area="370000"):
         from spider.browser_engine import BrowserEngine
-        import os
         
         all_data = []
-        self.browser = BrowserEngine(headless=False)
-        self.browser.logger = self.log_func
+        self.browser = BrowserEngine(headless=False) # GUI 模式以便通过验证码
+        self.browser.logger = self.log_func # 传递日志函数
         
-        # 1. 读取学校清单
-        monitor_file = r"d:\LLYWORK\spider\bid_spider\projectB_bid_spider_dev\monitor_schools.xlsx"
-        if not os.path.exists(monitor_file):
-            self._log(f"❌ 未找到监控清单文件: {monitor_file}")
-            return []
-            
-        try:
-            df_schools = pd.read_excel(monitor_file)
-            schools = df_schools.to_dict('records')
-            self._log(f"成功加载监控清单，共 {len(schools)} 所学校")
-        except Exception as e:
-            self._log(f"❌ 读取监控清单失败: {e}")
-            return []
-
         try:
             self.browser.init_driver()
             
-            for school_info in schools:
-                school_name = str(school_info.get('学校名称', '')).strip()
-                school_type = str(school_info.get('类型', '')).strip()
-                if not school_name:
+            # 1. 导航并搜索
+            self.browser.goto_search_page()
+            self.browser.perform_search(title, start_time, end_time, area)
+            
+            # 2. 如果起始页不是1，跳转
+            if start_page > 1:
+                success = self.browser.jump_to_page(start_page)
+                if not success:
+                    self._log(f"跳转到第 {start_page} 页失败，将从当前页开始")
+            
+            # 3. 循环爬取
+            pages_crawled = 0
+            current_page_idx = start_page
+            
+            while pages_crawled < max_pages:
+                self._log(f"--- 正在处理第 {current_page_idx} 页 ---")
+                
+                # 提取列表 (无限重试机制：空白数据一定是验证码问题)
+                records = self.browser.extract_records()
+                
+                rescue_attempts = 0
+                max_rescue_attempts = 5  # ✅ 最多重试5次验证码,避免无限循环
+                
+                while not records and rescue_attempts < max_rescue_attempts:
+                    rescue_attempts += 1
+                    self._log(f"第 {current_page_idx} 页未检测到数据，执行验证码重试 (第 {rescue_attempts} 次)...")
+                    
+                    # 重新执行全量搜索逻辑 (Tab -> 参数 -> 刷新验证码 -> 识别 -> 查询)
+                    self.browser.perform_search(title, start_time, end_time, area)
+                    
+                    # 检查当前页码，只有不在目标页时才跳转
+                    current_page_in_browser = self.browser.get_current_page()
+                    if current_page_in_browser != current_page_idx:
+                        self._log(f"当前页码 {current_page_in_browser}，需要跳转到第 {current_page_idx} 页...")
+                        self.browser.jump_to_page(current_page_idx)
+                    else:
+                        self._log(f"当前已在第 {current_page_idx} 页，无需跳转")
+                    
+                    # 再次尝试提取
+                    records = self.browser.extract_records()
+                
+                if not records:
+                    self._log(f"⚠️ 已重试 {max_rescue_attempts} 次验证码仍无数据")
+                    
+                    # 🔥 关键优化：第一页无数据直接退出,认为今日无数据
+                    if current_page_idx == start_page:
+                        self._log(f"✅ 第一页在 {max_rescue_attempts} 次重试后仍无数据，判定为今日无数据，停止爬取")
+                        break
+                    
+                    # 非第一页则跳过继续
+                    self._log(f"跳过第 {current_page_idx} 页，继续下一页")
+                    pages_crawled += 1
+                    current_page_idx += 1
+                    if not self.browser.next_page():
+                        self._log("无法点击下一页，停止爬取")
+                        break
                     continue
                 
-                # 针对每所学校，执行两条路径的抓取
-                search_configs = [
-                    {"area": "370000", "desc": "省级"},
-                    {"area": "CITY_COUNTY_ALL", "desc": "市区县-全部"}
-                ]
+                # 详情页处理 (保持并发)
+                # 注意：BrowserEngine 已经提取了 ID，我们继续用 requests 并发获取详情
+                # 为了保持 session 状态 (Cookies)，我们可以尝试让 requests 使用 browser 的 cookies
+                # 但目前详情页 API 似乎不需要 cookie 或者不敏感？
+                # 如果需要，可以: s = requests.Session(); s.cookies.update(...)
                 
-                for config in search_configs:
-                    self._log(f"=== 正在抓取学校: [{school_name}] ({config['desc']}) ===")
+                if records:
+                    with ThreadPoolExecutor(max_workers=2) as executor:
+                        futures = [executor.submit(self.process_item, rec) for rec in records]
+                        for f in futures:
+                            res = f.result()
+                            if res: all_data.extend(res)
+                
+                pages_crawled += 1
+                if pages_crawled >= max_pages:
+                    break
+                
+                # 翻页
+                if not self.browser.next_page():
+                    self._log("无法点击下一页，停止爬取")
+                    break
                     
-                    # 导航并搜索
-                    self.browser.goto_search_page()
-                    # 执行首次搜索
-                    search_success = self.browser.perform_search(title=school_name, start_time=start_time, end_time=end_time, area=config["area"])
-                    
-                    # 循环爬取当前搜索结果
-                    pages_crawled = 0
-                    current_page_idx = 1 # 这种模式下通常只看前几页
-                    
-                    while pages_crawled < max_pages:
-                        self._log(f"--- 处理 [{school_name}] 第 {current_page_idx} 页 ---")
-                        
-                        records = self.browser.extract_records()
-                        
-                        # 💡 救援逻辑：只有在【搜索失败】或【没记录且确认不了网页提示】时才重试
-                        rescue_attempts = 0
-                        max_rescue_attempts = 3
-                        
-                        # 如果第一次搜索就成功了但确实没有数据，或者页面已经明确提示无数据，则不用救援
-                        if not records:
-                            # 判定是否真的不需要救援了
-                            if search_success and self.browser.is_no_data_visible():
-                                self._log(f"页面确认无数据，跳过重试。")
-                            else:
-                                while not records and rescue_attempts < max_rescue_attempts:
-                                    rescue_attempts += 1
-                                    self._log(f"未检测到内容，尝试第 {rescue_attempts} 次救援搜索...")
-                                    search_success = self.browser.perform_search(title=school_name, start_time=start_time, end_time=end_time, area=config["area"])
-                                    if search_success and self.browser.is_no_data_visible():
-                                        self._log(f"救援搜索确认无数据。")
-                                        break
-                                    records = self.browser.extract_records()
-                        
-                        if not records:
-                            break
-                        
-                        # 处理详情并注入学校类型
-                        with ThreadPoolExecutor(max_workers=2) as executor:
-                            # 包装 process_item 以便在结果中添加字段
-                            def process_with_metadata(rec):
-                                items = self.process_item(rec)
-                                for item in items:
-                                    item["发布人类型"] = school_type
-                                return items
-                                
-                            futures = [executor.submit(process_with_metadata, rec) for rec in records]
-                            for f in futures:
-                                res = f.result()
-                                if res: all_data.extend(res)
-                        
-                        pages_crawled += 1
-                        if pages_crawled >= max_pages:
-                            break
-                            
-                        if not self.browser.next_page():
-                            break
-                        current_page_idx += 1
-                        
-                    # 给网站一点喘息时间
-                    time.sleep(random.uniform(2, 5))
-                    
+                current_page_idx += 1
+                
         except Exception as e:
             self._log(f"爬虫运行异常: {e}")
         finally:
             if self.browser:
-                self._log("任务结束，关闭浏览器...")
+                self._log("任务结束，5秒后自动关闭浏览器...")
+                time.sleep(5)
                 self.browser.close()
                 self.browser = None
+                self._log("✅ 浏览器已关闭")
             
         return all_data
 

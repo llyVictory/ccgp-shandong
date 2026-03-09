@@ -87,18 +87,17 @@ def save_df_to_excel_with_style(df, filepath):
         col_width_map = {
             1: 6,   # 序号 
             2: 12,  # 地区 
-            3: 25,  # 标题 
-            4: 20,  # 发布时间
+            3: 25,  # 标题 (可能较长，给25配合换行)
+            4: 20,  # 发布具体时间 (固定长度)
             5: 18,  # 发布人
-            6: 15,  # 发布人类型
-            7: 6,   # 子序号
-            8: 30,  # 采购项目名称
-            9: 60,  # 采购需求概况
-            10: 15, # 预算金额(万元)
-            11: 20, # 拟面向中小企业预留
-            12: 18, # 预计采购时间
-            13: 20, # 备注
-            14: 15, # 发布地址
+            6: 6,   # 子序号
+            7: 30,  # 采购项目名称 (核心，给30)
+            8: 60,  # 采购需求概况 (允许较长，但必须换行)
+            9: 15,  # 预算金额(万元)
+            10: 20, # 拟面向中小企业预留
+            11: 18, # 预计采购时间
+            12: 20, # 备注
+            13: 15, # 意向发布地址 (不要求全显)
         }
         
         # 应用列宽
@@ -150,14 +149,6 @@ tasks = {}
 # 定时任务调度器
 scheduler = BackgroundScheduler()
 scheduler.start()
-
-@app.on_event("shutdown")
-def shutdown_event():
-    print("正在关闭调度器和后台任务...")
-    try:
-        scheduler.shutdown(wait=False)
-    except Exception as e:
-        print(f"关闭调度器时出错: {e}")
 
 # 定时任务配置文件
 SCHEDULE_CONFIG_FILE = "schedule_config.json"
@@ -235,11 +226,10 @@ def run_spider_task(task_id: str, req: CrawlRequest):
             area=req.area
         )
         
-        # 无论是否有数据，都生成 Excel 供下载（无数据则只有表头）
-        df = pd.DataFrame(data if data else [])
-        
-        # 1. 时间过滤（仅在有数据时执行有效过滤逻辑，没数据跳过）
-        if not df.empty:
+        if data:
+            df = pd.DataFrame(data)
+            
+            # 时间过滤：只保留 昨天14:00 ~ 今天14:00 的数据
             from datetime import datetime, timedelta
             try:
                 now = datetime.now()
@@ -249,54 +239,64 @@ def run_spider_task(task_id: str, req: CrawlRequest):
                 log_callback(f"时间过滤范围: {yesterday_14.strftime('%Y-%m-%d %H:%M:%S')} ~ {today_14.strftime('%Y-%m-%d %H:%M:%S')}")
                 log_callback(f"过滤前数据条数: {len(df)}")
                 
+                # 将 "发布具体时间" 转为 datetime 类型进行过滤
                 if "发布具体时间" in df.columns:
+                    # 过滤函数
                     def is_in_range(dt_str):
-                        if not dt_str or pd.isna(dt_str): return True
+                        if not dt_str or pd.isna(dt_str):
+                            return True  # 空值保留
                         try:
                             dt = datetime.strptime(str(dt_str).strip(), "%Y-%m-%d %H:%M:%S")
                             return yesterday_14 <= dt <= today_14
-                        except: return True
+                        except:
+                            return True  # 解析失败的保留
+                    
                     df = df[df["发布具体时间"].apply(is_in_range)]
                     log_callback(f"过滤后数据条数: {len(df)}")
+                else:
+                    log_callback("⚠️ 未找到'发布具体时间'列，跳过时间过滤")
             except Exception as e:
                 log_callback(f"时间过滤出错: {e}")
-
-        # 2. 列名归一化与补充表头
-        if "发布具体时间" in df.columns:
-            df = df.rename(columns={"发布具体时间": "发布时间"})
-        if "意向发布地址" in df.columns:
-            df = df.rename(columns={"意向发布地址": "发布地址"})
             
-        # 标准输出列
-        cols = [
-            "序号", "地区", "标题", "发布时间", "发布人", "发布人类型",
-            "子序号", "采购项目名称", "采购需求概况", "预算金额(万元)",
-            "拟面向中小企业预留", "预计采购时间", "备注", "发布地址" 
-        ]
-        
-        # 补全缺失列
-        for col in cols:
-            if col not in df.columns:
-                df[col] = ""
-        
-        # 重新排序并编号
-        df = df[cols]
-        if not df.empty:
+            # Define new column order (添加 "发布具体时间" 列)
+            cols = [
+                "序号", 
+                "地区", 
+                "标题",
+                "发布具体时间",  # 精确到秒
+                "发布人",
+                "子序号",
+                "采购项目名称",
+                "采购需求概况",
+                "预算金额(万元)",
+                "拟面向中小企业预留",
+                "预计采购时间",
+                "备注",
+                "意向发布地址" 
+            ]
+            
+            # Ensure all columns exist
+            for col in cols:
+                if col not in df.columns:
+                    df[col] = ""
+            
+            # Reorder
+            df = df[cols]
+            
+            # 自动编号：1, 2, 3, ...
             df['序号'] = range(1, len(df) + 1)
-        
-        # 3. 保存文件
-        filename = f"shandong_data_{task_id}.xlsx"
-        filepath = os.path.join("static", filename)
-        save_df_to_excel_with_style(df, filepath)
-        
-        tasks[task_id]["status"] = "completed"
-        tasks[task_id]["file"] = filepath
-        
-        if data:
+            
+            filename = f"shandong_data_{task_id}.xlsx"
+            filepath = os.path.join("static", filename)
+            # 使用带样式的保存函数
+            save_df_to_excel_with_style(df, filepath)
+            
+            tasks[task_id]["status"] = "completed"
+            tasks[task_id]["file"] = filepath
             spider._log(f"任务完成! 数据已保存到 {filepath}")
         else:
-            spider._log("任务完成，未抓取到数据，已生成空表头文件。")
-
+            tasks[task_id]["status"] = "completed"
+            spider._log("任务完成，但未抓取到任何数据。")
             
     except Exception as e:
         print(f"Task failed: {e}")
@@ -360,9 +360,9 @@ def run_scheduled_spider():
     
     # 定义列结构
     cols = [
-        "序号", "地区", "标题", "发布时间", "发布人", "发布人类型",
+        "序号", "地区", "标题", "发布具体时间", "发布人",
         "子序号", "采购项目名称", "采购需求概况", "预算金额(万元)",
-        "拟面向中小企业预留", "预计采购时间", "备注", "发布地址"
+        "拟面向中小企业预留", "预计采购时间", "备注", "意向发布地址"
     ]
     
     # 生成文件名（按需求格式：省本级采购意向（20260206）.xlsx）
@@ -400,11 +400,6 @@ def run_scheduled_spider():
         except Exception as e:
             add_log(f"时间过滤出错: {e}")
         
-        if "发布具体时间" in df.columns:
-            df = df.rename(columns={"发布具体时间": "发布时间"})
-        if "意向发布地址" in df.columns:
-            df = df.rename(columns={"意向发布地址": "发布地址"})
-
         for col in cols:
             if col not in df.columns:
                 df[col] = ""
@@ -521,5 +516,25 @@ async def get_schedule_logs():
 
 
 if __name__ == "__main__":
+    # --- Windows Console Optimization (Fix for "Enter" key pause issue) ---
+    try:
+        import ctypes
+        kernel32 = ctypes.windll.kernel32
+        # Standard input handle
+        hLineEdit = kernel32.GetStdHandle(-10) 
+        
+        # Get current mode
+        mode = ctypes.c_ulong()
+        kernel32.GetConsoleMode(hLineEdit, ctypes.byref(mode))
+        
+        # Remove ENABLE_QUICK_EDIT_MODE (0x0040)
+        # 0x0080 is ENABLE_EXTENDED_FLAGS (required when turning off QuickEdit)
+        new_mode = (mode.value & ~0x0040) | 0x0080
+        kernel32.SetConsoleMode(hLineEdit, new_mode)
+        print("Windows Console: Quick Edit Mode disabled successfully.")
+    except Exception as e:
+        print(f"Windows Console Optimization Failed: {e}")
+    # ----------------------------------------------------------------------
+
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8090)
