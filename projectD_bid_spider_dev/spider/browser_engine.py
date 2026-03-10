@@ -100,7 +100,34 @@ class BrowserEngine:
             self.driver.quit()
             self.driver = None
 
-    def solve_captcha(self, refresh_first=True):
+    def ensure_page_size_15(self):
+        """确保页面每页显示 15 条记录"""
+        try:
+            # 检查当前是否已经是 15 条
+            try:
+                placeholder = self.driver.find_element(By.CSS_SELECTOR, ".el-select__selected-item.el-select__placeholder span")
+                if "15条/页" in placeholder.text:
+                    return # 已经是 15 条，跳过
+            except: pass
+
+            self._log("尝试调整每页条数为 15条/页...")
+            # 点击下拉框
+            select_xpath = "/html/body/div[1]/div[1]/div/div/div[2]/div/div[2]/div[3]/div/span[2]/div"
+            select_el = self.driver.find_element(By.XPATH, select_xpath)
+            self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", select_el)
+            select_el.click()
+            time.sleep(random.uniform(0.5, 1.0))
+            
+            # 点击 15条/页 选项
+            option_xpath = "/html/body/div[2]/div[3]/div/div/div[1]/ul/li[3]"
+            option_el = self.driver.find_element(By.XPATH, option_xpath)
+            option_el.click()
+            self._log("已设置为 15条/页")
+            time.sleep(random.uniform(1, 2))
+        except Exception as e:
+            self._log(f"调整每页条数失败 (可能该模式下无此选项): {e}")
+
+    def solve_captcha(self, refresh_first=False):
         """
         检测并自动识别只有在出现验证码时才调用的逻辑
         """
@@ -349,6 +376,10 @@ class BrowserEngine:
             search_success = False
             for attempt in range(max_search_attempts):
                 self.solve_captcha(refresh_first=(attempt > 0))
+                
+                # 3.5 调整页面条数 (每次查询前确保)
+                self.ensure_page_size_15()
+
                 buttons = self.driver.find_elements(By.TAG_NAME, "button")
                 found_btn = False
                 for btn in buttons:
@@ -620,6 +651,10 @@ class BrowserEngine:
                     has_captcha = self.solve_captcha(refresh_first=True)
                     if has_captcha:
                         self._log(f"翻页后检测到验证码，已自动处理 (尝试 {attempt+1}/{max_attempts})")
+                        
+                        # 确保每页条数
+                        self.ensure_page_size_15()
+
                         # 点击查询按钮
                         buttons = self.driver.find_elements(By.TAG_NAME, "button")
                         for btn in buttons:

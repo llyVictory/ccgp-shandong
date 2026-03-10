@@ -388,12 +388,12 @@ def run_scheduled_spider():
         scheduled_task_status["running"] = False
         return
 
-    # 执行爬取（今日数据，由 .env 指定最大页数）
-    max_pages = int(os.getenv("MAX_PAGES", "100"))
+    # 执行爬取（定时任务不限制页数，设为 999 代表全量爬取）
+    max_pages = 999
     spider = Shandong(use_proxy=False)
     spider.log_func = log_callback  # 设置日志回调
     
-    add_log(f"开始爬取数据（区域: {area_list}, 最大页数: {max_pages}）...")
+    add_log(f"开始爬取数据（区域: {area_list}, 模式: 全量扫描）...")
     
     data = spider.run(
         max_pages=max_pages,
