@@ -23,12 +23,22 @@ class BrowserEngine:
         self.driver = None
         self.ocr = ddddocr.DdddOcr(show_ad=False)
         self.logger = None
+        
+        # 加载停留时间参数
+        self.wait_next_page = (int(os.getenv("WAIT_NEXT_PAGE_MIN", "2")), int(os.getenv("WAIT_NEXT_PAGE_MAX", "4")))
+        self.wait_detail_page = (int(os.getenv("WAIT_DETAIL_PAGE_MIN", "2")), int(os.getenv("WAIT_DETAIL_PAGE_MAX", "4")))
+        self.wait_search = (int(os.getenv("WAIT_SEARCH_MIN", "2")), int(os.getenv("WAIT_SEARCH_MAX", "4")))
+        self.wait_action_delay = (int(os.getenv("WAIT_ACTION_DELAY_MIN", "1")), int(os.getenv("WAIT_ACTION_DELAY_MAX", "2")))
 
     def _log(self, msg):
         if self.logger:
             self.logger(f"[Browser] {msg}")
         else:
             print(f"[Browser] {msg}")
+
+    def _sleep_random(self, range_tuple):
+        """执行随机等待"""
+        time.sleep(random.uniform(range_tuple[0], range_tuple[1]))
 
     def init_driver(self):
         if self.driver:
@@ -130,7 +140,7 @@ class BrowserEngine:
                             refresh_btn = self.driver.find_element(By.CSS_SELECTOR, "div.n-captcha i.refresh-icon")
                             refresh_btn.click()
                             self._log("点击了验证码刷新按钮")
-                            time.sleep(random.uniform(1, 2)) # 等待新图片加载
+                            self._sleep_random(self.wait_action_delay) # 等待新图片加载
                         except Exception as e:
                             self._log(f"刷新验证码失败: {e}")
 
@@ -149,7 +159,7 @@ class BrowserEngine:
                         # 填入
                         input_box.clear()
                         input_box.send_keys(res)
-                        time.sleep(random.uniform(1, 2))
+                        self._sleep_random(self.wait_action_delay)
                         return True
             return False
         except Exception as e:
@@ -184,7 +194,7 @@ class BrowserEngine:
                         if "is_active" not in div_class:
                             div.click()
                             self._log("点击了'自定义'时间按钮")
-                            time.sleep(random.uniform(1, 2))
+                            self._sleep_random(self.wait_action_delay)
                         break
                 except:
                     continue
@@ -216,7 +226,7 @@ class BrowserEngine:
                     except:
                         inp.clear()
                         inp.send_keys(target_val)
-                time.sleep(random.uniform(1, 2))
+                self._sleep_random(self.wait_action_delay)
                 return True
             else:
                 self._log("⚠️ 未能在页面找到有效的起止日期输入框")
@@ -242,7 +252,7 @@ class BrowserEngine:
             if "is_active" not in class_attr:
                 tab_el.click()
                 self._log("点击了 '意向公开' Tab")
-                time.sleep(random.uniform(1, 2))
+                self._sleep_random(self.wait_action_delay)
             else:
                 self._log("'意向公开' Tab 已经是激活状态")
         except Exception as e:
@@ -262,32 +272,32 @@ class BrowserEngine:
                 if "is_active" not in (el.get_attribute("class") or ""):
                     el.click()
                     self._log("选择了: 山东省本级")
-                    time.sleep(random.uniform(1, 2))
+                    self._sleep_random(self.wait_action_delay)
             elif area == "CITY_COUNTY_ALL":
                 tab_xpath = "/html/body/div[1]/div[1]/div/div/div[2]/div/div[2]/div[1]/div[1]/div[2]"
                 tab_el = self.driver.find_element(By.XPATH, tab_xpath)
                 if "is_active" not in (tab_el.get_attribute("class") or ""):
                     tab_el.click()
                     self._log("点击了: 市区县 Tab")
-                    time.sleep(random.uniform(1, 2))
+                    self._sleep_random(self.wait_action_delay)
                 all_xpath = "/html/body/div[1]/div[1]/div/div/div[2]/div/div[2]/div[1]/div[2]/div[1]/div[3]/div[2]/div[1]"
                 all_el = self.driver.find_element(By.XPATH, all_xpath)
                 all_el.click()
                 self._log("选择了: 市区县 - 全部")
-                time.sleep(random.uniform(1, 2))
+                self._sleep_random(self.wait_action_delay)
             elif area in city_xpath_index:
                 tab_xpath = "/html/body/div[1]/div[1]/div/div/div[2]/div/div[2]/div[1]/div[1]/div[2]"
                 tab_el = self.driver.find_element(By.XPATH, tab_xpath)
                 if "is_active" not in (tab_el.get_attribute("class") or ""):
                     tab_el.click()
                     self._log("点击了: 市区县 Tab")
-                    time.sleep(random.uniform(1, 2))
+                    self._sleep_random(self.wait_action_delay)
                 idx = city_xpath_index[area]
                 city_xpath = f"/html/body/div[1]/div[1]/div/div/div[2]/div/div[2]/div[1]/div[2]/div[1]/div[3]/div[2]/div[{idx}]"
                 city_el = self.driver.find_element(By.XPATH, city_xpath)
                 city_el.click()
                 self._log(f"选择了城市: {city_el.text.strip()}")
-                time.sleep(random.uniform(1, 2))
+                self._sleep_random(self.wait_action_delay)
         except Exception as e:
             self._log(f"地区选择出错: {e}")
 
@@ -327,7 +337,7 @@ class BrowserEngine:
                             if "is_active" not in div_class:
                                 div.click()
                                 self._log(f"点击了时间范围按钮: {quick_btn_text}")
-                                time.sleep(random.uniform(1, 2))
+                                self._sleep_random(self.wait_action_delay)
                             clicked = True
                             break
                     except: continue
@@ -343,7 +353,7 @@ class BrowserEngine:
                 refresh_btn = self.driver.find_element(By.CSS_SELECTOR, "div.n-captcha i.refresh-icon")
                 refresh_btn.click()
                 self._log("强制刷新验证码...")
-                time.sleep(random.uniform(1, 2)) 
+                self._sleep_random(self.wait_action_delay) 
             except: pass
 
             max_search_attempts = 5
@@ -358,7 +368,7 @@ class BrowserEngine:
                         found_btn = True
                         break
                 if not found_btn: break
-                time.sleep(random.uniform(2, 3))
+                self._sleep_random(self.wait_search)
                 error = self.check_search_error()
                 if error == "captcha_error":
                     self._log(f"⚠️ 识别错误 (尝试 {attempt+1}/{max_search_attempts})...")
@@ -448,7 +458,7 @@ class BrowserEngine:
                         click_target = cols[2] # 降级点击 td
                     
                     self.driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", click_target)
-                    time.sleep(random.uniform(1, 2))
+                    self._sleep_random(self.wait_action_delay)
                     
                     # 记录点击前的状态
                     old_handles = self.driver.window_handles
@@ -461,7 +471,7 @@ class BrowserEngine:
                         self.driver.execute_script("arguments[0].click();", click_target)
                     
                     # 等待反应
-                    time.sleep(random.uniform(1, 2))
+                    self._sleep_random(self.wait_action_delay)
                     
                     new_handles = self.driver.window_handles
                     new_url = self.driver.current_url
@@ -474,7 +484,7 @@ class BrowserEngine:
                         new_handle = [h for h in new_handles if h not in old_handles][0]
                         self.driver.switch_to.window(new_handle)
                         self._log("已打开详情页 Tab，模拟浏览停留...")
-                        time.sleep(random.uniform(1, 2))
+                        self._sleep_random(self.wait_detail_page)
                         detail_url = self.driver.current_url
                         
                         # 提取发布具体时间 (格式: "发布时间：2026-02-05 10:46:14")
@@ -586,7 +596,7 @@ class BrowserEngine:
             if next_btn.is_enabled() and "disabled" not in btn_class:
                 next_btn.click()
                 self._log("已点击下一页按钮")
-                time.sleep(random.uniform(2, 3)) # 等待加载
+                self._sleep_random(self.wait_next_page) # 等待加载
                 
                 # 翻页后可能需要验证码！检测并处理
                 has_captcha = self.solve_captcha(refresh_first=True)
@@ -598,7 +608,7 @@ class BrowserEngine:
                         if btn.text and "查询" in btn.text:
                             btn.click()
                             self._log("点击了查询按钮")
-                            time.sleep(random.uniform(1, 2))
+                            self._sleep_random(self.wait_action_delay)
                             break
                 
                 return True
@@ -646,7 +656,7 @@ class BrowserEngine:
             # 回车触发跳转
             inp.send_keys(Keys.ENTER)
             self._log(f"已输入页码 {page_num} 并按下回车")
-            time.sleep(random.uniform(2, 3))
+            self._sleep_random(self.wait_next_page)
             
             # 验证跳转结果
             new_val = inp.get_attribute("value")

@@ -313,8 +313,6 @@ class Shandong(object):
             "标题": record.get("title", ""),
             "发布具体时间": record.get("publishDatetime", ""),  # 精确到秒的发布时间
             "发布人": record.get("publisher", ""),  # 从详情页提取的发布人
-            # "采购方式": record.get("buyKindCode", ""),  # 官方数据为空，已注释
-            # "项目类型": record.get("projectType", ""),  # 官方数据为空，已注释
             "发布时间": record.get("date", ""),
             "意向发布地址": full_link
         }
@@ -350,57 +348,52 @@ class Shandong(object):
         self.browser = BrowserEngine(headless=False)
         self.browser.logger = self.log_func
         
-        # 1. 预加载学校清单（用于本地精筛）
-        # 从环境变量读取绝对路径，若无则使用默认相对路径
-        monitor_file = os.getenv("MONITOR_SCHOOLS_PATH", r"d:\LLYWORK\spider\bid_spider\projectC_bid_spider_v1\monitor_schools.xlsx")
-        if not os.path.exists(monitor_file):
-            self._log(f"❌ 未找到监控清单文件: {monitor_file}")
-            return []
-            
-        try:
-            df_schools = pd.read_excel(monitor_file)
-            # 建立 {学校名称: 类型} 映射，方便后续注入
-            school_type_map = {}
-            for _, row in df_schools.iterrows():
-                name = str(row.get('学校名称', '')).strip()
-                stype = str(row.get('类型', '')).strip()
-                if name:
-                    school_type_map[name] = stype
-            
-            target_list = list(school_type_map.keys())
-            self._log(f"成功加载监控清单，共 {len(target_list)} 所目标院校")
-        except Exception as e:
-            self._log(f"❌ 读取监控清单失败: {e}")
-            return []
-
         try:
             self.browser.init_driver()
             
-            # 2. 确定聚合搜索模式 (智能分级)
-            # 判断是否为长周期任务（超过3天）
-            # 根据要求：摒弃全量策略，无论时间段，全部使用模糊关键词策略
+            # 2. 爬取控制
             if keywords is None:
-                keywords = ["职业", "专科"]
-            self._log(f"当前任务设定 ({start_time}模式): 启用核心词组模糊匹配策略 {keywords}，摒弃全量防止数据量过载")
+                keywords = ["大学", "学校", "学院", "教育厅", "教育电视台", "教育招生考试院", "电教馆", "电化教育馆"]
+            self._log(f"当前任务设定 ({start_time}模式): 启用核心词组模糊匹配策略 {keywords}")
 
-            search_configs = [
-                {"area": "370000", "desc": "省级"},
-                {"area": "CITY_COUNTY_ALL", "desc": "市区县-全部"}
-            ]
+            # 解析要抓取的区域
+            target_areas = []
+            if isinstance(area, list):
+                target_areas = area
+            elif isinstance(area, str) and "," in area:
+                target_areas = area.split(",")
+            else:
+                target_areas = [area]
+
+            search_configs = []
+            if "370000" in target_areas:
+                search_configs.append({"area": "370000", "desc": "省级"})
+            if "CITY_COUNTY_ALL" in target_areas:
+                search_configs.append({"area": "CITY_COUNTY_ALL", "desc": "市区县-全部"})
+            
+            # 兜底：如果都没选，按全选处理
+            if not search_configs:
+                search_configs = [
+                    {"area": "370000", "desc": "省级"},
+                    {"area": "CITY_COUNTY_ALL", "desc": "市区县-全部"}
+                ]
             
             raw_collected_count = 0
-            seen_ids = set() # 用于聚合去重
 
             for config in search_configs:
+                # 区域级 ID 去重：确保同一区域内不同关键词搜到重复内容时去重
+                # 但不同区域（如省级、区县）之间不互相去重，取并集保留
+                seen_ids = set() 
+                
                 for kw in keywords:
-                    self._log(f"=== 聚合抓取开始: 区域=[{config['desc']}] 关键词=[{kw if kw else '空'}] ===")
+                    self._log(f"=== 抓取开始: 区域=[{config['desc']}] 关键词=[{kw if kw else '空'}] ===")
                     
                     self.browser.goto_search_page()
                     search_success = self.browser.perform_search(title=kw, start_time=start_time, end_time=end_time, area=config["area"])
                     
                     if not search_success and not self.browser.is_no_data_visible():
-                        self._log("❌ 搜索执行异常且未确认无数据（如连续验证码识别失败）。")
-                        self._log("❌ 为保证数据完整度，杜绝产出带有遗漏的“残缺结果”，将立刻强行终止整个抓取任务！")
+                        self._log("❌ 搜索执行异常且未确认无数据。")
+                        self._log("❌ 为保证数据完整度，将立刻强行终止整个抓取任务！")
                         raise RuntimeError("关键搜索执行失败，放弃本次完整抓取任务。")
                         
                     current_page_idx = 1
@@ -409,7 +402,6 @@ class Shandong(object):
                         
                         records = self.browser.extract_records()
                         if not records:
-                            # 判定是否真的结束了
                             if self.browser.is_no_data_visible():
                                 self._log("页面提示暂无数据，此搜索结束。")
                                 break
@@ -417,39 +409,28 @@ class Shandong(object):
                                 self._log("未检测到记录，可能加载失败，跳过。")
                                 break
                         
-                        # 本地精筛与数据注入
                         for rec in records:
                             rec_id = rec.get('id')
                             if rec_id in seen_ids:
-                                continue # 重复数据跳过
+                                continue 
                                 
-                            # 命中逻辑：公告发布人中包含 86 所学校名称中的任何一个
-                            publisher = rec.get('publisher', '')
-                            matched_school = None
-                            for school_name in target_list:
-                                if school_name in publisher:
-                                    matched_school = school_name
-                                    break
+                            details = self.process_item(rec)
+                            for detail in details:
+                                all_data.append(detail)
                             
-                            if matched_school:
-                                # 详情解析（这里进入详情页获取具体表格）
-                                details = self.process_item(rec)
-                                for detail in details:
-                                    detail["发布人类型"] = school_type_map.get(matched_school, "")
-                                    all_data.append(detail)
-                                seen_ids.add(rec_id)
-                                self._log(f"🎯 命中目标: {matched_school} - {rec.get('title')}")
-                            
+                            seen_ids.add(rec_id)
                             raw_collected_count += 1
                         
                         if not self.browser.next_page() or current_page_idx >= max_pages:
                             break
                         current_page_idx += 1
-                        
-                    # 抓取完一个组合留一点间隔
-                    time.sleep(random.uniform(2, 4))
+                    
+                    # 使用配置的关键词/区域切换间隔
+                    wait_min = int(os.getenv("WAIT_CRAWL_INTERVAL_MIN", "3"))
+                    wait_max = int(os.getenv("WAIT_CRAWL_INTERVAL_MAX", "6"))
+                    time.sleep(random.uniform(wait_min, wait_max))
                 
-            self._log(f"聚合抓取结束。原始扫描: {raw_collected_count} 条，匹配目标: {len(all_data)} 条。")
+            self._log(f"抓取结束。原始扫描: {raw_collected_count} 条，获取数据: {len(all_data)} 条。")
                     
         except RuntimeError as re:
             # 捕获我们自己主动抛出的阻断性异常（如连续5次验证码失败）
@@ -476,7 +457,7 @@ if __name__ == "__main__":
     if not df.empty:
         # 统一 Project C 的列名
         cols = [
-            "序号", "地区", "标题", "发布时间", "发布人", "发布人类型",
+            "序号", "地区", "标题", "发布时间", "发布人",
             "子序号", "采购项目名称", "采购需求概况", "预算金额(万元)",
             "拟面向中小企业预留", "预计采购时间", "备注", "意向发布地址"
         ]
@@ -494,7 +475,7 @@ if __name__ == "__main__":
         print("未抓取到任何符合目标的数据。")
         # 即使无数据，也按要求生成空 Excel 并在第一个格子写入“无数据”
         cols = [
-            "序号", "地区", "标题", "发布时间", "发布人", "发布人类型",
+            "序号", "地区", "标题", "发布时间", "发布人",
             "子序号", "采购项目名称", "采购需求概况", "预算金额(万元)",
             "拟面向中小企业预留", "预计采购时间", "备注", "意向发布地址"
         ]

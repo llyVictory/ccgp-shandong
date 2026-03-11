@@ -22,9 +22,9 @@ def split_keywords(kw_str):
     处理关键词字符串，支持中文和英文逗号分隔
     """
     if not kw_str:
-        return ["职业", "专科"]
-    # 支持中文逗号和英文逗号
-    kw_str = kw_str.replace("，", ",")
+        return ["大学", "学校", "学院", "教育厅", "教育电视台", "教育招生考试院", "电教馆", "电化教育馆"]
+    # 支持中文逗号、英文逗号和顿号
+    kw_str = kw_str.replace("，", ",").replace("、", ",")
     return [k.strip() for k in kw_str.split(",") if k.strip()]
 
 def calculate_row_height(row_values, col_width_map, base_height=18):
@@ -111,16 +111,15 @@ def save_df_to_excel_with_style(df, filepath):
             2: 12,  # 地区 
             3: 25,  # 标题 
             4: 20,  # 发布时间
-            5: 18,  # 发布人
-            6: 20,  # 发布人类型
-            7: 6,   # 子序号
-            8: 30,  # 采购项目名称
-            9: 60,  # 采购需求概况
-            10: 15, # 预算金额(万元)
-            11: 20, # 拟面向中小企业预留
-            12: 18, # 预计采购时间
-            13: 20, # 备注
-            14: 15, # 发布地址
+            5: 25,  # 发布人
+            6: 6,   # 子序号
+            7: 30,  # 采购项目名称
+            8: 60,  # 采购需求概况
+            9: 15, # 预算金额(万元)
+            10: 20, # 拟面向中小企业预留
+            11: 18, # 预计采购时间
+            12: 20, # 备注
+            13: 15, # 发布地址
         }
         
         # 应用列宽
@@ -214,6 +213,7 @@ class ScheduleTaskRequest(BaseModel):
     minute: int = 0  # 执行时间（分钟）
     downloadPath: str = "D:\\spider_downloads"  # 下载路径
     keywords: str = "" # 检索关键词
+    areas: list[str] = ["370000", "CITY_COUNTY_ALL"] # 检索区域
 
 @app.get("/")
 async def read_index():
@@ -262,7 +262,7 @@ def run_spider_task(task_id: str, req: CrawlRequest):
             title=req.title, 
             start_time=req.startTime, 
             end_time=req.endTime, 
-            area=req.area,
+            area=req.area.split(',') if ',' in req.area else req.area, # 兼容单选和多选
             keywords=split_keywords(req.keywords)
         )
         
@@ -286,7 +286,7 @@ def run_spider_task(task_id: str, req: CrawlRequest):
             
         # 标准输出列
         cols = [
-            "序号", "地区", "标题", "发布时间", "发布人", "发布人类型",
+            "序号", "地区", "标题", "发布时间", "发布人",
             "子序号", "采购项目名称", "采购需求概况", "预算金额(万元)",
             "拟面向中小企业预留", "预计采购时间", "备注", "发布地址" 
         ]
@@ -355,9 +355,9 @@ def run_scheduled_spider():
         scheduled_task_status["running"] = False
         return
     
-    area = config.get("area", "370000")
+    areas = config.get("areas", ["370000", "CITY_COUNTY_ALL"])
     download_path = config.get("downloadPath", "D:\\spider_downloads_C")
-    keywords_str = config.get("keywords", "职业，专科")
+    keywords_str = config.get("keywords", "大学、学校、学院、教育厅、教育电视台、教育招生考试院、电教馆、电化教育馆")
     
     # 确保下载目录存在
     os.makedirs(download_path, exist_ok=True)
@@ -380,13 +380,13 @@ def run_scheduled_spider():
         title="",
         start_time="0",  # 今日
         end_time="",
-        area=area,
+        area=areas,
         keywords=split_keywords(keywords_str)
     )
     
     # 定义列结构
     cols = [
-        "序号", "地区", "标题", "发布时间", "发布人", "发布人类型",
+        "序号", "地区", "标题", "发布时间", "发布人",
         "子序号", "采购项目名称", "采购需求概况", "预算金额(万元)",
         "拟面向中小企业预留", "预计采购时间", "备注", "发布地址"
     ]
@@ -489,7 +489,8 @@ async def create_schedule(req: ScheduleTaskRequest):
         "hour": req.hour,
         "minute": req.minute,
         "downloadPath": req.downloadPath,
-        "keywords": req.keywords
+        "keywords": req.keywords,
+        "areas": req.area.split(',') if ',' in req.area else [req.area]
     }
     
     with open(SCHEDULE_CONFIG_FILE, 'w', encoding='utf-8') as f:
