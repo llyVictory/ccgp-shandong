@@ -92,7 +92,7 @@ class BrowserEngine:
             self.driver.get("https://www.baidu.com")
             self._log("网络连接正常")
         except Exception as net_err:
-            self._log(f"⚠️ 网络连接测试失败: {net_err}")
+            self._log(f"警告: 网络连接测试失败: {net_err}")
             self._log("请检查: 1. 网络是否连接 2. 代理是否开启 3. 防火墙设置")
 
     def close(self):
@@ -246,7 +246,7 @@ class BrowserEngine:
                 time.sleep(random.uniform(1, 2))
                 return True
             else:
-                self._log("⚠️ 未能在页面找到有效的起止日期输入框")
+                self._log("警告: 未能在页面找到有效的起止日期输入框")
                 return False
         except Exception as e:
             self._log(f"填充日期过程异常: {e}")
@@ -391,11 +391,11 @@ class BrowserEngine:
                 time.sleep(random.uniform(2, 3))
                 error = self.check_search_error()
                 if error == "captcha_error":
-                    self._log(f"⚠️ 识别错误 (尝试 {attempt+1}/{max_search_attempts})...")
+                    self._log(f"警告: 识别错误 (尝试 {attempt+1}/{max_search_attempts})...")
                     continue
                 res_count = self.get_result_count()
                 if res_count >= 0:
-                    self._log(f"✅ 查询成功，总数: {res_count}")
+                    self._log(f"OK: 查询成功，总数: {res_count}")
                     search_success = True
                     break
             return search_success
@@ -420,7 +420,7 @@ class BrowserEngine:
             self._log(f"当前页发现 {len(all_rows)} 行，其中可见行 {len(visible_rows)} 行")
             
             if len(all_rows) > 0 and len(visible_rows) == 0:
-                self._log("⚠️ 警告：检测到有数据行但判定为不可见，正在分析原因...")
+                self._log("警告：检测到有数据行但判定为不可见，正在分析原因...")
                 for idx, r in enumerate(all_rows[:3]): # 只分析前3行
                     try:
                         className = r.get_attribute("class")
@@ -470,16 +470,17 @@ class BrowserEngine:
                     
                     # [V4.1] 前置拦截逻辑
                     is_match = False
+                    match_kw = ""
                     if keywords:
                         for kw in keywords:
                             if kw and kw in title:
                                 is_match = True
+                                match_kw = kw
                                 break
                     
                     # 实时输出扫描状态日志
-                    status_icon = "🎯" if is_match else "➖"
-                    status_text = "命中" if is_match else "跳过"
-                    self._log(f"  {status_icon} {title} [{status_text}]")
+                    status_text = f"命中关键词：{match_kw}" if is_match else "跳过"
+                    self._log(f"  {title} [{status_text}]")
                     
                     # --- V4.1 修复: 若未命中，通过外层构造空 url 占位记录，让循环能继续进行 ---
                     if not is_match:
@@ -532,9 +533,20 @@ class BrowserEngine:
                         new_handle = [h for h in new_handles if h not in old_handles][0]
                         self.driver.switch_to.window(new_handle)
                         self._log("已打开详情页 Tab，模拟浏览停留...")
-                        time.sleep(random.uniform(1, 2))
+                        
+                        # 增加基础停留时间以应对封禁和加载缓慢
+                        time.sleep(random.uniform(3.0, 5.0))
                         detail_url = self.driver.current_url
                         
+                        # 首先尝试显式等待发布时间的文本框出现，确保页面已完成渲染
+                        try:
+                            time_xpath = "/html/body/div/div[1]/div/div/div[1]/div[2]/span[1]"
+                            WebDriverWait(self.driver, 10).until(
+                                EC.presence_of_element_located((By.XPATH, time_xpath))
+                            )
+                        except:
+                            self._log("等待详情页DOM渲染超时...")
+                            
                         # 提取发布具体时间 (格式: "发布时间：2026-02-05 10:46:14")
                         publish_datetime = ""
                         try:
@@ -549,7 +561,7 @@ class BrowserEngine:
                             else:
                                 publish_datetime = time_raw
                         except Exception as e:
-                            self._log(f"提取发布具体时间失败: {e}")
+                            self._log(f"提取发布具体时间失败或页面未展示: {e}")
                         
                         # 提取发布人
                         publisher = ""
@@ -563,10 +575,16 @@ class BrowserEngine:
                             else:
                                 publisher = publisher_raw
                         except Exception as e:
-                            self._log(f"提取发布人失败: {e}")
+                            self._log(f"提取发布人失败或页面未展示: {e}")
+                        
+                        self._log(f"提取到 发布具体时间: [{publish_datetime}], 发布人: [{publisher}]")
                         
                         self.driver.close()
                         self.driver.switch_to.window(main_handle)
+                        
+                        # 关掉详情页后再随机等一下避免被判定机器狂刷
+                        time.sleep(random.uniform(1.0, 3.0))
+                        
                     elif new_url != old_url:
                         # 当前页跳转了
                         detail_url = new_url
@@ -577,7 +595,7 @@ class BrowserEngine:
                                 EC.presence_of_element_located((By.CSS_SELECTOR, "table tbody tr"))
                             )
                         except:
-                            self._log("返回列表页后等待超市")
+                            self._log("返回列表页后等待超时")
                     else:
                         self._log(f"点击第 {i+1} 行未触发跳转，尝试强制 JS 打开？")
                         # 暂时跳过
@@ -615,6 +633,7 @@ class BrowserEngine:
                             }
                             records.append(rec)
                             self._log(f"成功提取: {title}")
+                            self._log("----------")
                         
                 except Exception as e:
                     self._log(f"行处理出错: {e}")
@@ -667,7 +686,7 @@ class BrowserEngine:
                         # 检查是否有错误提示
                         error = self.check_search_error()
                         if error == "captcha_error":
-                            self._log("⚠️ 验证码识别错误，正在重试...")
+                            self._log("警告: 验证码识别错误，正在重试...")
                             continue
                         else:
                             # 没有错误提示，说明可能成功了

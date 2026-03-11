@@ -66,7 +66,8 @@
         }
 
         select,
-        input {
+        input,
+        textarea {
             width: 100%;
             padding: 1rem;
             font-size: 1.1rem;
@@ -77,6 +78,7 @@
             box-sizing: border-box;
             outline: none;
             transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            font-family: inherit;
         }
 
         select {
@@ -92,7 +94,8 @@
         }
 
         select:hover,
-        input:hover {
+        input:hover,
+        textarea:hover {
             border-color: #475569;
             background-color: #1e293b;
         }
@@ -112,10 +115,17 @@
         }
 
         select:focus,
-        input:focus {
+        input:focus,
+        textarea:focus {
             border-color: var(--primary);
             background-color: #1e293b;
             box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.2);
+        }
+
+        textarea {
+            min-height: 100px;
+            resize: vertical;
+            line-height: 1.5;
         }
 
         /* --- Custom Dropdown UI --- */
@@ -324,7 +334,7 @@
 
 <body>
     <div class="container">
-        <h1>山东政采爬虫控制台C</h1>
+        <h1>山东政采爬虫控制台-全量业务</h1>
         <div class="form-group" style="display: none;">
             <label>省级 / 市区县</label>
             <select id="area">
@@ -332,18 +342,15 @@
             </select>
         </div>
         <div class="form-group">
-            <div
+            <!-- <div
                 style="padding: 1.5rem; background: rgba(99, 102, 241, 0.1); border-left: 4px solid var(--primary); border-radius: 0.75rem; margin-bottom: 2rem;">
                 <div style="color: var(--primary); font-size: 1.1rem; font-weight: 600; margin-bottom: 0.5rem;">自动任务模式
                 </div>
                 <div style="color: #94a3b8; font-size: 0.95rem; line-height: 1.6;">
-                    系统将统一使用模糊关键词（职业、专科）进行检索，
-                    在<strong>省级</strong>和<strong>市区县-全部</strong>两个路径进行快速抓取，最后通过
-                    <code
-                        style="color: #818cf8; background: #0f172a; padding: 0.2rem 0.4rem; border-radius: 0.3rem;">monitor_schools.xlsx</code>
-                    学校清单对结果进行筛选。
+                    系统将统一使用模糊关键词进行检索，
+                    在<strong>省级</strong>和<strong>市区县-全部</strong>两个路径进行快速抓取全量数据。
                 </div>
-            </div>
+            </div> -->
             <!-- 隐藏的配置（固定值） -->
             <input type="hidden" id="startPage" value="1">
             <input type="hidden" id="maxPages" value="100">
@@ -359,7 +366,19 @@
 
                     <div class="form-group">
                         <label>检索关键词（中文逗号分隔）</label>
-                        <input type="text" id="crawlKeywords" value="职业，专科" placeholder="例如: 职业，专科">
+                        <textarea id="crawlKeywords" placeholder="例如: 大学，学校，学院">大学，学校，学院，教育厅，教育电视台，教育招生考试院，电教馆，电化教育馆</textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label>采集区域（省级与市区县可多选）</label>
+                        <div style="display: flex; gap: 1.5rem; background: #0f172a; padding: 1rem; border-radius: 0.75rem; border: 1px solid #334155;">
+                            <label style="display: flex; align-items: center; gap: 0.75rem; cursor: pointer; margin-bottom: 0;">
+                                <input type="checkbox" id="crawlProvincial" checked> 省级
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 0.75rem; cursor: pointer; margin-bottom: 0;">
+                                <input type="checkbox" id="crawlCityCounty" checked> 市区县-全部
+                            </label>
+                        </div>
                     </div>
 
                     <div style="margin-bottom: 1.5rem;">
@@ -395,7 +414,19 @@
 
                     <div class="form-group">
                         <label>检索关键词（中文逗号分隔）</label>
-                        <input type="text" id="scheduleKeywords" value="职业，专科" placeholder="例如: 职业，专科">
+                        <textarea id="scheduleKeywords" placeholder="例如: 大学，学校，学院">大学，学校，学院，教育厅，教育电视台，教育招生考试院，电教馆，电化教育馆</textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label>采集区域（省级与市区县可多选）</label>
+                        <div style="display: flex; gap: 1.5rem; background: #0f172a; padding: 1rem; border-radius: 0.75rem; border: 1px solid #334155;">
+                            <label style="display: flex; align-items: center; gap: 0.75rem; cursor: pointer; margin-bottom: 0;">
+                                <input type="checkbox" id="scheduleProvincial" checked> 省级
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 0.75rem; cursor: pointer; margin-bottom: 0;">
+                                <input type="checkbox" id="scheduleCityCounty" checked> 市区县-全部
+                            </label>
+                        </div>
                     </div>
 
                     <div class="form-group" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
@@ -416,7 +447,8 @@
                             placeholder="例如: D:\spider_downloads">
                     </div>
                     <div style="color: #94a3b8; font-size: 0.85rem; margin-top: 0.5rem; margin-bottom: 1rem;">
-                        定时任务将每天固定时间执行，并自动保存到指定路径
+                     
+                        <div style="color: #60a5fa; margin-top: 0.2rem;">• 筛选范围：昨天14:00 - 今天14:00的数据</div>
                     </div>
 
                     <!-- 当前定时任务状态 -->
@@ -545,17 +577,19 @@
                         <div style="color: #22c55e; font-size: 0.95rem; line-height: 1.8;">
                             <div>✓ 定时任务已启用</div>
                             <div>✓ 每天 ${String(data.config.hour).padStart(2, '0')}:${String(data.config.minute).padStart(2, '0')} 执行</div>
-                            <div>✓ 检索词：${data.config.keywords || '职业，专科'}</div>
-                            <div>✓ 爬取数据：省级+市区县、昨天14:00~今天14:00</div>
+                            <div>✓ 关键词：${data.config.keywords || '大学，学校，学院，教育厅，教育电视台，教育招生考试院，电教馆，电化教育馆'}</div>
+                            <div>✓ 爬取区域：${(data.config.provincial ? '省级' : '') + (data.config.provincial && data.config.cityCountyAll ? '+' : '') + (data.config.cityCountyAll ? '市区县-全部' : '')}</div>
                             <div>✓ 保存路径：${data.config.downloadPath}</div>
                         </div>
                     `;
                         document.getElementById('scheduleInfo').innerHTML = infoHTML;
 
+                        document.getElementById('scheduleProvincial').checked = data.config.provincial !== false;
+                        document.getElementById('scheduleCityCounty').checked = data.config.cityCountyAll !== false;
                         document.getElementById('scheduleHour').value = data.config.hour;
                         document.getElementById('scheduleMinute').value = String(data.config.minute).padStart(2, '0');
                         document.getElementById('downloadPath').value = data.config.downloadPath;
-                        document.getElementById('scheduleKeywords').value = data.config.keywords || '职业，专科';
+                        document.getElementById('scheduleKeywords').value = data.config.keywords || '大学，学校，学院，教育厅，教育电视台，教育招生考试院，电教馆，电化教育馆';
                     } else {
                         document.getElementById('scheduleStatus').style.display = 'none';
                     }
@@ -582,8 +616,10 @@
 
                 const end = new Date();
                 const start = new Date();
-                // 如果是“今日”，days 为 0，实际上爬虫内部会处理成 昨天14:00~今天14:00
-                // 如果是“近7天”，我们需要包含今天。
+                
+                // [修复逻辑] 
+                // 如果是“今日”，days 为 0，start 和 end 都设为今天日期字符串。
+                // 这样发送到后端时，dataset.quickRange 为 "0"，后端会触发 昨天14:00~今天14:00 的聚合逻辑。
                 if (days > 0) {
                     start.setDate(end.getDate() - (days - 1));
                 }
@@ -598,11 +634,8 @@
                 document.getElementById('startTime').value = formatDate(start);
                 document.getElementById('endTime').value = formatDate(end);
 
-                // [核心修复] 保存原始的 days 值到 startTime.dataset，
-                // 以便在发送 API 请求时，如果用户没有手动修改过日期，
-                // 我们发送快捷代码（如 "7", "30"）而不是具体的日期字符串，
-                // 这样后端 shandong.py 才能正确识别并开启“长周期聚合模式”。
-                document.getElementById('startTime').dataset.quickRange = days;
+                // 保存原始的 days 值到 startTime.dataset
+                document.getElementById('startTime').dataset.quickRange = String(days);
             }
 
             // 简单的状态提示辅助函数
@@ -642,8 +675,22 @@
                     return;
                 }
 
+                const provincial = document.getElementById('crawlProvincial').checked;
+                const cityCountyAll = document.getElementById('crawlCityCounty').checked;
+
+                if (!provincial && !cityCountyAll) {
+                    showStatusMessage('❌ 错误: 请至少选择一个采集区域', 'failed');
+                    return;
+                }
+
+                if (!startTimeValue || !endTimeValue) {
+                    showStatusMessage('请先选择日期范围', 'failed');
+                    return;
+                }
+
                 const payload = {
-                    area: document.getElementById('area').value,
+                    provincial: provincial,
+                    cityCountyAll: cityCountyAll,
                     startTime: String(startTimeValue), // 可能是 "7" 或 "2026-02-23"
                     endTime: endTimeValue,
                     startPage: parseInt(document.getElementById('startPage').value),
@@ -756,8 +803,14 @@
                 const hour = parseInt(document.getElementById('scheduleHour').value);
                 const minute = parseInt(document.getElementById('scheduleMinute').value);
                 const downloadPath = document.getElementById('downloadPath').value.trim();
-                const area = document.getElementById('area').value;
+                const provincial = document.getElementById('scheduleProvincial').checked;
+                const cityCountyAll = document.getElementById('scheduleCityCounty').checked;
                 const keywords = document.getElementById('scheduleKeywords').value.trim();
+
+                if (!provincial && !cityCountyAll) {
+                    showStatusMessage('❌ 错误: 请至少选择一个采集区域', 'failed');
+                    return;
+                }
 
                 if (!downloadPath) {
                     showStatusMessage('提示: 请输入下载保存路径', 'failed');
@@ -768,7 +821,7 @@
                     const resp = await fetch('/api/schedule/create', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ area, hour, minute, downloadPath, keywords })
+                        body: JSON.stringify({ provincial, cityCountyAll, hour, minute, downloadPath, keywords })
                     });
                     const data = await resp.json();
 

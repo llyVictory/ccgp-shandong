@@ -2,6 +2,7 @@ from fastapi import FastAPI, BackgroundTasks
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
+from datetime import datetime, timedelta
 import os
 import uuid
 from spider.shandong import Shandong
@@ -12,6 +13,20 @@ import json
 import shutil
 from openpyxl.styles import Alignment, Font
 import math
+from dotenv import load_dotenv
+
+# 加载环境变量
+load_dotenv()
+
+def split_keywords(kw_str):
+    """
+    处理关键词字符串，支持中文和英文逗号分隔
+    """
+    if not kw_str:
+        return ["大学", "学校", "学院", "教育厅", "教育电视台", "教育招生考试院", "电教馆", "电化教育馆"]
+    # 支持中文逗号和英文逗号
+    kw_str = kw_str.replace("，", ",")
+    return [k.strip() for k in kw_str.split(",") if k.strip()]
 
 def calculate_row_height(row_values, col_width_map, base_height=18):
     """
@@ -67,10 +82,18 @@ def save_df_to_excel_with_style(df, filepath):
     if df is None:
         return
         
-    # 如果 DataFrame 为空，也建立一个空的带表头的文件
+    # 如果 DataFrame 为空，补入一行“无数据”标记
     if df.empty:
-        df.to_excel(filepath, index=False)
-        return
+        cols = df.columns.tolist()
+        if cols:
+            # 创建一行数据，第一个单元格填入 "无数据"
+            empty_row = {col: "" for col in cols}
+            empty_row[cols[0]] = "无数据"
+            df = pd.DataFrame([empty_row])
+        else:
+            # 如果连列名都没有（理论上不会），直接保存返回
+            df.to_excel(filepath, index=False)
+            return
 
     with pd.ExcelWriter(filepath, engine='openpyxl') as writer:
         df.to_excel(writer, index=False, sheet_name='意向数据')
@@ -87,25 +110,25 @@ def save_df_to_excel_with_style(df, filepath):
         col_width_map = {
             1: 6,   # 序号 
             2: 12,  # 地区 
-            3: 25,  # 标题 (可能较长，给25配合换行)
-            4: 20,  # 发布具体时间 (固定长度)
+            3: 25,  # 标题 
+            4: 20,  # 发布时间
             5: 18,  # 发布人
             6: 6,   # 子序号
-            7: 30,  # 采购项目名称 (核心，给30)
-            8: 60,  # 采购需求概况 (允许较长，但必须换行)
-            9: 15,  # 预算金额(万元)
+            7: 30,  # 采购项目名称
+            8: 60,  # 采购需求概况
+            9: 15, # 预算金额(万元)
             10: 20, # 拟面向中小企业预留
             11: 18, # 预计采购时间
             12: 20, # 备注
-            13: 15, # 意向发布地址 (不要求全显)
+            13: 15, # 发布地址
         }
         
         # 应用列宽
         for col_idx, width in col_width_map.items():
-            if col_idx <= len(df.columns):
-                col_letter = worksheet.cell(row=1, column=col_idx).column_letter
-                worksheet.column_dimensions[col_letter].width = width
-            
+            from openpyxl.utils import get_column_letter
+            col_letter = get_column_letter(col_idx)
+            worksheet.column_dimensions[col_letter].width = width
+
         
         # 应用对齐样式和字体
         # [用户配置] 内容行固定高度，您可以在此处直接修改数字来调节松紧
@@ -150,6 +173,20 @@ tasks = {}
 scheduler = BackgroundScheduler()
 scheduler.start()
 
+@app.on_event("shutdown")
+def shutdown_event():
+    print("正在关闭调度器和后台任务...")
+    try:
+        scheduler.shutdown(wait=False)
+    except Exception as e:
+        print(f"关闭调度器时出错: {e}")
+    
+    # 强制退出：由于 Selenium 的长时间阻塞或循环操作，FastAPI 默认的优雅停机
+    # 会一直等待 BackgroundTasks 结束，导致 Ctrl+C 卡死并报错。这里直接强制终止进程。
+    import os
+    print("强制终止所有后台爬虫进程...")
+    os._exit(0)
+
 # 定时任务配置文件
 SCHEDULE_CONFIG_FILE = "schedule_config.json"
 
@@ -162,19 +199,23 @@ scheduled_task_status = {
 }
 
 class CrawlRequest(BaseModel):
-    area: str = "370000"
+    provincial: bool = True
+    cityCountyAll: bool = True
     startTime: str = ""
     endTime: str = ""
     startPage: int = 1
     maxPages: int = 1
     title: str = ""
     useProxy: bool = False
+    keywords: str = ""
 
 class ScheduleTaskRequest(BaseModel):
-    area: str = "370000"
+    provincial: bool = True
+    cityCountyAll: bool = True
     hour: int = 0  # 执行时间（小时）
     minute: int = 0  # 执行时间（分钟）
     downloadPath: str = "D:\\spider_downloads"  # 下载路径
+    keywords: str = "" # 检索关键词
 
 @app.get("/")
 async def read_index():
@@ -217,86 +258,74 @@ def run_spider_task(task_id: str, req: CrawlRequest):
         spider = Shandong(use_proxy=req.useProxy)
         spider.log_func = log_callback
         
+        # 根据开关生成区域列表
+        area_list = []
+        if req.provincial: area_list.append("370000")
+        if req.cityCountyAll: area_list.append("CITY_COUNTY_ALL")
+        
+        if not area_list:
+            log_callback("错误: 未选择任何爬取区域（省级/市区县），任务终止。")
+            tasks[task_id]["status"] = "failed"
+            return
+
         data = spider.run(
             max_pages=req.maxPages, 
             start_page=req.startPage,
             title=req.title, 
             start_time=req.startTime, 
             end_time=req.endTime, 
-            area=req.area
+            area=area_list,
+            keywords=split_keywords(req.keywords)
         )
         
-        if data:
-            df = pd.DataFrame(data)
+        # 无论是否有数据，都生成 Excel 供下载（无数据则只有表头）
+        df = pd.DataFrame(data if data else [])
+        
+        # 1. 整理采集到的数据（不再强制 14:00 过滤，因为单次任务由用户在前端指定各异的时间跨度）
+        if not df.empty:
+            log_callback(f"采集完成条数: {len(df)}")
+
+        # 2. 列名归一化与补充表头
+        if "发布具体时间" in df.columns:
+            # 防止重名冲突出现两个“发布时间”
+            if "发布时间" in df.columns:
+                df = df.drop(columns=["发布时间"])
+            df = df.rename(columns={"发布具体时间": "发布时间"})
+        if "意向发布地址" in df.columns:
+            if "发布地址" in df.columns:
+                df = df.drop(columns=["发布地址"])
+            df = df.rename(columns={"意向发布地址": "发布地址"})
             
-            # 时间过滤：只保留 昨天14:00 ~ 今天14:00 的数据
-            from datetime import datetime, timedelta
-            try:
-                now = datetime.now()
-                today_14 = now.replace(hour=14, minute=0, second=0, microsecond=0)
-                yesterday_14 = today_14 - timedelta(days=1)
-                
-                log_callback(f"时间过滤范围: {yesterday_14.strftime('%Y-%m-%d %H:%M:%S')} ~ {today_14.strftime('%Y-%m-%d %H:%M:%S')}")
-                log_callback(f"过滤前数据条数: {len(df)}")
-                
-                # 将 "发布具体时间" 转为 datetime 类型进行过滤
-                if "发布具体时间" in df.columns:
-                    # 过滤函数
-                    def is_in_range(dt_str):
-                        if not dt_str or pd.isna(dt_str):
-                            return True  # 空值保留
-                        try:
-                            dt = datetime.strptime(str(dt_str).strip(), "%Y-%m-%d %H:%M:%S")
-                            return yesterday_14 <= dt <= today_14
-                        except:
-                            return True  # 解析失败的保留
-                    
-                    df = df[df["发布具体时间"].apply(is_in_range)]
-                    log_callback(f"过滤后数据条数: {len(df)}")
-                else:
-                    log_callback("⚠️ 未找到'发布具体时间'列，跳过时间过滤")
-            except Exception as e:
-                log_callback(f"时间过滤出错: {e}")
-            
-            # Define new column order (添加 "发布具体时间" 列)
-            cols = [
-                "序号", 
-                "地区", 
-                "标题",
-                "发布具体时间",  # 精确到秒
-                "发布人",
-                "子序号",
-                "采购项目名称",
-                "采购需求概况",
-                "预算金额(万元)",
-                "拟面向中小企业预留",
-                "预计采购时间",
-                "备注",
-                "意向发布地址" 
-            ]
-            
-            # Ensure all columns exist
-            for col in cols:
-                if col not in df.columns:
-                    df[col] = ""
-            
-            # Reorder
-            df = df[cols]
-            
-            # 自动编号：1, 2, 3, ...
+        # 标准输出列
+        cols = [
+            "序号", "地区", "标题", "发布时间", "发布人",
+            "子序号", "采购项目名称", "采购需求概况", "预算金额(万元)",
+            "拟面向中小企业预留", "预计采购时间", "备注", "发布地址" 
+        ]
+        
+        # 补全缺失列
+        for col in cols:
+            if col not in df.columns:
+                df[col] = ""
+        
+        # 重新排序并编号
+        df = df[cols]
+        if not df.empty:
             df['序号'] = range(1, len(df) + 1)
-            
-            filename = f"shandong_data_{task_id}.xlsx"
-            filepath = os.path.join("static", filename)
-            # 使用带样式的保存函数
-            save_df_to_excel_with_style(df, filepath)
-            
-            tasks[task_id]["status"] = "completed"
-            tasks[task_id]["file"] = filepath
+        
+        # 3. 保存文件
+        filename = f"shandong_data_{task_id}.xlsx"
+        filepath = os.path.join("static", filename)
+        save_df_to_excel_with_style(df, filepath)
+        
+        tasks[task_id]["status"] = "completed"
+        tasks[task_id]["file"] = filepath
+        
+        if data:
             spider._log(f"任务完成! 数据已保存到 {filepath}")
         else:
-            tasks[task_id]["status"] = "completed"
-            spider._log("任务完成，但未抓取到任何数据。")
+            spider._log("任务完成，未抓取到数据，已生成空表头文件。")
+
             
     except Exception as e:
         print(f"Task failed: {e}")
@@ -315,9 +344,14 @@ def run_scheduled_spider():
     scheduled_task_status["last_result"] = None
     
     def add_log(msg):
-        """添加日志到全局列表"""
+        """添加日志到全局列表并写入文件"""
+        time_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        record = f"[{time_str}] {msg}"
+        
         scheduled_task_logs.append(msg)
         print(f"[定时任务] {msg}")
+        
+        pass
     
     add_log("=" * 50)
     add_log("定时任务开始执行...")
@@ -332,43 +366,56 @@ def run_scheduled_spider():
         scheduled_task_status["running"] = False
         return
     
-    area = config.get("area", "370000")
-    download_path = config.get("downloadPath", "D:\\spider_downloads")
+    download_path = config.get("downloadPath", "D:\\spider_downloads_C")
+    keywords_str = config.get("keywords", "大学，学校，学院，教育厅，教育电视台，教育招生考试院，电教馆，电化教育馆")
     
     # 确保下载目录存在
     os.makedirs(download_path, exist_ok=True)
     add_log(f"下载路径: {download_path}")
+    add_log(f"检索关键词: {keywords_str}")
     
     # 定义日志回调函数
     def log_callback(msg):
         add_log(msg)
     
-    # 执行爬取（今日数据，100页）
+    # 根据配置生成区域列表
+    area_list = []
+    if config.get("provincial", True): area_list.append("370000")
+    if config.get("cityCountyAll", True): area_list.append("CITY_COUNTY_ALL")
+    
+    if not area_list:
+        add_log("错误: 未选择任何爬取区域，跳过执行")
+        scheduled_task_status["running"] = False
+        return
+
+    # 执行爬取（定时任务不限制页数，设为 999 代表全量爬取）
+    max_pages = 999
     spider = Shandong(use_proxy=False)
     spider.log_func = log_callback  # 设置日志回调
     
-    add_log("开始爬取数据（时间范围: 昨天14:00 ~ 今天14:00，最多100页）...")
+    add_log(f"开始爬取数据（区域: {area_list}, 模式: 全量扫描）...")
     
     data = spider.run(
-        max_pages=100,
+        max_pages=max_pages,
         start_page=1,
         title="",
-        start_time="0",  # 今日
-        end_time="",
-        area=area
+        start_time=(datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d"),
+        end_time=datetime.now().strftime("%Y-%m-%d"),
+        area=area_list,
+        keywords=split_keywords(keywords_str)
     )
     
     # 定义列结构
     cols = [
-        "序号", "地区", "标题", "发布具体时间", "发布人",
+        "序号", "地区", "标题", "发布时间", "发布人",
         "子序号", "采购项目名称", "采购需求概况", "预算金额(万元)",
-        "拟面向中小企业预留", "预计采购时间", "备注", "意向发布地址"
+        "拟面向中小企业预留", "预计采购时间", "备注", "发布地址"
     ]
     
-    # 生成文件名（按需求格式：省本级采购意向（20260206）.xlsx）
-    from datetime import datetime, timedelta
+    # 生成文件名（使用环境变量配置前缀：省本级采购意向（20260206）.xlsx）
     today_str = datetime.now().strftime("%Y%m%d")
-    filename = f"省本级采购意向（{today_str}）.xlsx"
+    prefix = os.getenv("EXCEL_FILENAME_PREFIX", "省本级采购意向")
+    filename = f"{prefix}（{today_str}）.xlsx"
     filepath = os.path.join(download_path, filename)
     
     if data:
@@ -396,10 +443,19 @@ def run_scheduled_spider():
                 df = df[df["发布具体时间"].apply(is_in_range)]
                 add_log(f"过滤后数据条数: {len(df)}")
             else:
-                add_log("⚠️ 未找到'发布具体时间'列，跳过时间过滤")
+                add_log("警告: 未找到'发布具体时间'列，跳过时间过滤")
         except Exception as e:
             add_log(f"时间过滤出错: {e}")
         
+        if "发布具体时间" in df.columns:
+            if "发布时间" in df.columns:
+                df = df.drop(columns=["发布时间"])
+            df = df.rename(columns={"发布具体时间": "发布时间"})
+        if "意向发布地址" in df.columns:
+            if "发布地址" in df.columns:
+                df = df.drop(columns=["发布地址"])
+            df = df.rename(columns={"意向发布地址": "发布地址"})
+
         for col in cols:
             if col not in df.columns:
                 df[col] = ""
@@ -449,10 +505,12 @@ async def create_schedule(req: ScheduleTaskRequest):
     """创建/更新定时任务"""
     # 保存配置
     config = {
-        "area": req.area,
+        "provincial": req.provincial,
+        "cityCountyAll": req.cityCountyAll,
         "hour": req.hour,
         "minute": req.minute,
-        "downloadPath": req.downloadPath
+        "downloadPath": req.downloadPath,
+        "keywords": req.keywords
     }
     
     with open(SCHEDULE_CONFIG_FILE, 'w', encoding='utf-8') as f:
@@ -520,16 +578,11 @@ if __name__ == "__main__":
     try:
         import ctypes
         kernel32 = ctypes.windll.kernel32
-        # Standard input handle
-        hLineEdit = kernel32.GetStdHandle(-10) 
-        
-        # Get current mode
+        hLineEdit = kernel32.GetStdHandle(-10) # Standard input handle
         mode = ctypes.c_ulong()
         kernel32.GetConsoleMode(hLineEdit, ctypes.byref(mode))
-        
         # Remove ENABLE_QUICK_EDIT_MODE (0x0040)
-        # 0x0080 is ENABLE_EXTENDED_FLAGS (required when turning off QuickEdit)
-        new_mode = (mode.value & ~0x0040) | 0x0080
+        new_mode = (mode.value & ~0x0040) | 0x0080 # 0x0080 is ENABLE_EXTENDED_FLAGS
         kernel32.SetConsoleMode(hLineEdit, new_mode)
         print("Windows Console: Quick Edit Mode disabled successfully.")
     except Exception as e:
@@ -537,4 +590,5 @@ if __name__ == "__main__":
     # ----------------------------------------------------------------------
 
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8090)
+    # access_log=False：彻底关闭请求记录（屏蔽轮询日志），同时保留启动信息
+    uvicorn.run(app, host="0.0.0.0", port=8091, access_log=False)
