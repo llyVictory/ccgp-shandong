@@ -137,8 +137,44 @@ class BrowserEngine:
         except Exception as e:
             self._log(f"调整每页条数失败 (可能该模式下无此选项): {e}")
 
+    def _get_captcha_image_data(self, img_el) -> bytes | None:
+        """
+        [V4.5 核心修复] 获取验证码图片像素数据。
+        针对 blob: URL 类型的图片，screenshot_as_png 截到的是渲染前的空帧。
+        改用 JS Canvas 将 img 元素绘制到离屏画布，再导出 base64 数据。
+        """
+        driver = self.driver
+        try:
+            # 方案 A：JS Canvas 绘制（最稳，适配 blob: URL）
+            b64_data = driver.execute_script("""
+                var img = arguments[0];
+                var canvas = document.createElement('canvas');
+                canvas.width = img.naturalWidth || img.width;
+                canvas.height = img.naturalHeight || img.height;
+                var ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0);
+                // 导出为 PNG base64（去掉 data:image/png;base64, 前缀）
+                return canvas.toDataURL('image/png').split(',')[1];
+            """, img_el)
+
+            if b64_data and len(b64_data) > 100:
+                import base64
+                return base64.b64decode(b64_data)
+        except Exception as e:
+            self._log(f"JS Canvas 提取失败，降级到截图: {e}")
+
+        # 方案 B：降级到 selenium 截图（有时因为 CORS 导致 Canvas 污染报错）
+        try:
+            data = img_el.screenshot_as_png
+            if data and len(data) > 100:
+                return data
+        except Exception as e:
+            self._log(f"截图降级也失败: {e}")
+
+        return None
+
     def _refresh_captcha(self):
-        """点击验证码刷新按钮的私有方法"""
+        """点击验证码刷新按钮，等待时间与参考版对齐（1-2s 足够）"""
         driver = self.driver
         if not driver:
             return
@@ -146,13 +182,13 @@ class BrowserEngine:
             refresh_btn = driver.find_element(By.CSS_SELECTOR, "div.n-captcha i.refresh-icon")
             refresh_btn.click()
             self._log("点击了验证码刷新按钮")
-            time.sleep(random.uniform(2.5, 3.5)) 
+            time.sleep(random.uniform(1.0, 2.0))
         except Exception as e:
             self._log(f"刷新验证码失败: {e}")
 
     def solve_captcha(self, refresh_first=False):
         """
-        [V4.2] 强化版验证码识别：解决截图为空、OCR结果为空、加载不充分等问题。
+        [V4.5] 强化版验证码识别：使用 JS Canvas 方案解决 blob: URL 截图空图问题。
         """
         driver = self.driver
         if not driver:
@@ -160,12 +196,14 @@ class BrowserEngine:
             return False
             
         try:
-            # 1. 查找必备元素
-            captcha_imgs = driver.find_elements(By.CSS_SELECTOR, "div.n-captcha img")
+            # 使用精确 XPath 定位，比 CSS Selector 更稳定
+            captcha_img_xpath = "/html/body/div[1]/div[1]/div/div/div[2]/div/div[2]/div[1]/div[2]/div[2]/div[2]/div[2]/img"
+            captcha_imgs = driver.find_elements(By.XPATH, captcha_img_xpath)
             input_box = None
             for inp in driver.find_elements(By.TAG_NAME, "input"):
                 ph = inp.get_attribute("placeholder") or ""
-                if "验证码" in ph:
+                label = inp.get_attribute("aria-label") or ""
+                if "验证码" in ph or "验证码" in label:
                     input_box = inp
                     break
             
@@ -179,21 +217,19 @@ class BrowserEngine:
             if refresh_first:
                 self._refresh_captcha()
 
-            # 2. 识别循环 (通过刷新解决 OCR 结果为空的情况)
+            # 2. 识别循环
             final_res = ""
             last_src = ""
             max_ocr_attempts = 5
             for attempt in range(max_ocr_attempts):
-                # [关键修正] 每次循环重新获取元素，防止刷新后 DOM 引用失效或获取旧图缓存
                 try:
-                    current_imgs = driver.find_elements(By.CSS_SELECTOR, "div.n-captcha img")
+                    current_imgs = driver.find_elements(By.XPATH, captcha_img_xpath)
                     if not current_imgs:
                         self._log("警告: 验证码图片元素丢失")
                         break
                     img_el = current_imgs[0]
                     src = img_el.get_attribute("src") or ""
                     
-                    # 打印特征用于 Debug
                     src_tag = src[-15:] if len(src) > 15 else src
                     self._log(f"当前识别图片 URL 特征: ...{src_tag}")
                     
@@ -202,54 +238,43 @@ class BrowserEngine:
                         break
                     
                     if src == last_src and attempt > 0:
-                        self._log("检测到刷新后 URL 没变，可能页面未响应，继续尝试识别...")
+                        self._log("检测到刷新后 URL 没变，继续尝试...")
                     last_src = src
-                    
-                    # [增强检测] 确保图片内容已加载 (检查 naturalWidth)
-                    is_loaded = driver.execute_script(
-                        "return arguments[0].complete && typeof arguments[0].naturalWidth != 'undefined' && arguments[0].naturalWidth > 0", 
-                        img_el
-                    )
-                    
-                    if not is_loaded:
-                        self._log(f"等待图片加载中 (尝试 {attempt+1}/{max_ocr_attempts})... src={src_tag}")
-                        time.sleep(1.5)
-                        # 二次检查
-                        is_loaded = driver.execute_script(
-                            "return arguments[0].complete && (arguments[0].naturalWidth > 0)", 
-                            img_el
-                        )
-                    
-                    screenshot = img_el.screenshot_as_png
-                    if screenshot:
-                        img = Image.open(io.BytesIO(screenshot))
-                        # 转换模式，ddddocr 在 RGB 下更稳
+
+                    # 等待 blob 图片被浏览器完全渲染（关键：等比参考版本短，避免截到上一帧）
+                    time.sleep(random.uniform(1.0, 1.5))
+
+                    # [V4.5] 使用 JS Canvas 获取图片像素数据
+                    img_data = self._get_captcha_image_data(img_el)
+                    if img_data:
+                        img = Image.open(io.BytesIO(img_data))
                         if img.mode != 'RGB':
                             img = img.convert('RGB')
                         
-                        # 识别结果处理
+                        # 主识别
                         res = self.ocr.classification(img).strip()
                         
-                        # [V4.4] 如果识别为空或过短，尝试增强对比度重试
+                        # 对比度增强二次识别
                         if not res or len(res) < 2:
                             from PIL import ImageEnhance
                             enhancer = ImageEnhance.Contrast(img)
-                            img_enhanced = enhancer.enhance(2.0) # 增强对比度
+                            img_enhanced = enhancer.enhance(2.0)
                             res_enhanced = self.ocr.classification(img_enhanced).strip()
                             if res_enhanced:
                                 res = res_enhanced
-                                self._log(f"  (使用图像增强识别成功)")
+                                self._log("  (使用图像增强识别成功)")
 
-                        self._log(f"OCR 识别过程 (尝试 {attempt+1}/{max_ocr_attempts}) -> 结果: [{res}]")
-                        
-                        if res:
+                        # [V4.6 校验] 验证码固定为4位，必须满足长度，否则触发刷新重试
+                        if res and len(res) == 4:
+                            self._log(f"OCR 识别过程 (尝试 {attempt+1}/{max_ocr_attempts}) -> 结果: [{res}] (校验通过)")
                             final_res = res
                             break
                         else:
-                            # 识别为空，记录额外日志以便排查方案
-                            self._log(f"识别为空 (URL：...{src_tag}, 宽：{img.width}, 高：{img.height})")
+                            detail_msg = f"识别为空" if not res else f"长度无效({len(res)})"
+                            self._log(f"OCR 识别失败 ({detail_msg})，准备刷新重试... (尝试 {attempt+1}/{max_ocr_attempts})")
+                            # 这里不写 break，让它进入下面的刷新逻辑并继续循环
                     else:
-                        self._log(f"截图为空 (尝试 {attempt+1}/{max_ocr_attempts})")
+                        self._log(f"图片数据获取失败 (尝试 {attempt+1}/{max_ocr_attempts})")
                 except Exception as e:
                     self._log(f"识别环节异常: {e}")
                 
@@ -264,7 +289,7 @@ class BrowserEngine:
                     input_box.send_keys(char)
                     time.sleep(random.uniform(0.1, 0.3))
                 self._log(f"验证码填入成功: [{final_res}]")
-                time.sleep(1.5) # 稍作等待确保 DOM 反应过来
+                time.sleep(1.5)
                 return True
             else:
                 self._log("警告: 验证码识别连续失败（空结果），跳过填写")
@@ -653,14 +678,26 @@ class BrowserEngine:
                         detail_url = self.driver.current_url
                         
                         # 首先尝试显式等待发布时间的文本框出现，确保页面已完成渲染
+                        detail_xpath = "/html/body/div/div[1]/div/div/div[2]/table/tbody/tr/td/div/div"
                         try:
-                            time_xpath = "/html/body/div/div[1]/div/div/div[1]/div[2]/span[1]"
                             WebDriverWait(self.driver, 10).until(
-                                EC.presence_of_element_located((By.XPATH, time_xpath))
+                                EC.presence_of_element_located((By.XPATH, detail_xpath))
                             )
                         except:
-                            self._log("等待详情页DOM渲染超时...")
+                            self._log("等待详情页 DOM (表格容器) 渲染超时，尝试降级检测...")
                             
+                        # 提取详情 HTML 内容 (由用户提供 XPath)
+                        detail_html_content = ""
+                        try:
+                            detail_elements = self.driver.find_elements(By.XPATH, detail_xpath)
+                            if detail_elements:
+                                detail_container = detail_elements[0]
+                                detail_html_content = detail_container.get_attribute("innerHTML")
+                            else:
+                                self._log(f"警告: 通过 XPath 未找到详情容器 ({detail_xpath})")
+                        except Exception as e:
+                            self._log(f"提取详情 HTML 失败: {e}")
+
                         # 提取发布具体时间 (格式: "发布时间：2026-02-05 10:46:14")
                         publish_datetime = ""
                         try:
@@ -743,10 +780,11 @@ class BrowserEngine:
                                 "date": pub_date,
                                 "publishDatetime": publish_datetime,  # 发布具体时间 (精确到秒)
                                 "url": detail_url,
+                                "detail_html": detail_html_content, # 直接携带从 Selenium 拿到的 HTML
                                 "publisher": publisher  # 发布人
                             }
                             records.append(rec)
-                            self._log(f"成功提取: {title}")
+                            self._log(f"成功提取: {title} (已捕获详情 HTML)")
                             self._log("----------")
                         
                 except Exception as e:
@@ -802,16 +840,16 @@ class BrowserEngine:
                             self._log(f"警告: 验证码识别错误 (尝试 {attempt+1}/5)")
                             continue
                         
-                        # [判定标准 V4.3]
+                        # [判定标准 V4.6 修复逻辑] 重新获取状态进行判定
                         res_count = self.get_result_count()
                         rows = self.driver.find_elements(By.CSS_SELECTOR, "table:not(.el-date-table) tbody tr")
                         visible_rows = [r for r in rows if r.is_displayed()]
 
-                        if res_count >= 0 or len(visible_rows) > 0:
+                        if res_count > 0 and len(visible_rows) > 0:
                             self._log(f"OK: 翻页/查询成功 (统计: {res_count}, 可见行: {len(visible_rows)})")
                             break
                         else:
-                            self._log(f"警告: 翻页结果未正常展示，尝试重试 (尝试 {attempt+1})")
+                            self._log(f"警告: 数据行未正常渲染(统计: {res_count}, 可见行: {len(visible_rows)})，尝试重试 (尝试 {attempt+1}/5)")
                             continue
                     else:
                         # 没有检测到验证码，直接退出重试检查，等待常规加载

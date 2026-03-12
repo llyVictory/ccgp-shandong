@@ -146,8 +146,8 @@ class Shandong(object):
             "oldData": 0
         }
         try:
-            # 严格反爬，避免被封 IP
-            time.sleep(random.uniform(3.0, 6.0))
+            # [V4.5] 优化：响应用户吐槽，只有在作为降级方案时触发，且缩短休眠
+            time.sleep(random.uniform(1.0, 2.0))
             resp = requests.get(self.detail_url, params=params, headers=self.get_headers(), timeout=20, proxies=self.proxies)
             
             if resp.status_code in [403, 429]:
@@ -184,8 +184,9 @@ class Shandong(object):
         results = []
         seen_titles = set()
         
-        self._log(f"Debug: Found {len(tables)} tables")
+        self._log(f"Debug: 正在解析 HTML, 包含 {len(tables)} 个 table 标签")
         
+        total_extracted_rows = 0
         for table_idx, table in enumerate(tables):
             # 优先查找直接子节点 tr，若无则查找 tbody 下的 tr
             rows = table.find_all('tr', recursive=False)
@@ -292,9 +293,10 @@ class Shandong(object):
                 if unique_key in seen_titles:
                     continue
                 seen_titles.add(unique_key)
-
                 results.append(item)
+                total_extracted_rows += 1
                     
+        self._log(f"Debug: 解析完成，从 {len(tables)} 个表格中提取到 {total_extracted_rows} 条清单数据")
         return results
 
     def process_item(self, record):
@@ -302,7 +304,14 @@ class Shandong(object):
         full_link = f"http://www.ccgp-shandong.gov.cn/detail?id={record['id']}&colCode={record['colCode']}&oldData={record['oldData']}"
         self._log(f"[{record.get('areaName', '未知')}] 解析中: {record.get('title', '无标题')}")
         
-        html = self.get_detail_html(record['id'], record['colCode'])
+        # [V4.5] 核心优化：如果 Selenium 已经抓到了 HTML，直接用，不再发起请求
+        html = record.get("detail_html")
+        if not html:
+            self._log("Selenium 提取 HTML 失败，正在通过 Requests 降级抓取...")
+            html = self.get_detail_html(record['id'], record['colCode'])
+        else:
+            self._log("利用 Selenium 预提取数据，跳过 Requests 请求。")
+            
         child_rows = self.parse_html_table(html)
         
         final_rows = []
