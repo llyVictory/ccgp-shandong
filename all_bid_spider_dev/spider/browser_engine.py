@@ -23,6 +23,16 @@ class BrowserEngine:
         self.driver = None
         self.ocr = ddddocr.DdddOcr(show_ad=False)
         self.logger = None
+        
+        # ----------------------------------------------------
+        # 行为伪装等待时间参数（从 .env 读取，防封配置/伪装人类）
+        # ----------------------------------------------------
+        self.wait_search = (float(os.getenv("WAIT_SEARCH_MIN", "2.0")), float(os.getenv("WAIT_SEARCH_MAX", "3.0")))
+        self.wait_next_page = (float(os.getenv("WAIT_NEXT_PAGE_MIN", "2.0")), float(os.getenv("WAIT_NEXT_PAGE_MAX", "3.0")))
+        self.wait_detail = (float(os.getenv("WAIT_DETAIL_MIN", "3.0")), float(os.getenv("WAIT_DETAIL_MAX", "5.0")))
+        self.wait_action_delay = (float(os.getenv("WAIT_ACTION_DELAY_MIN", "1.0")), float(os.getenv("WAIT_ACTION_DELAY_MAX", "2.0")))
+
+
 
     def _log(self, msg):
         if self.logger:
@@ -127,62 +137,142 @@ class BrowserEngine:
         except Exception as e:
             self._log(f"调整每页条数失败 (可能该模式下无此选项): {e}")
 
+    def _refresh_captcha(self):
+        """点击验证码刷新按钮的私有方法"""
+        driver = self.driver
+        if not driver:
+            return
+        try:
+            refresh_btn = driver.find_element(By.CSS_SELECTOR, "div.n-captcha i.refresh-icon")
+            refresh_btn.click()
+            self._log("点击了验证码刷新按钮")
+            time.sleep(random.uniform(2.5, 3.5)) 
+        except Exception as e:
+            self._log(f"刷新验证码失败: {e}")
+
     def solve_captcha(self, refresh_first=False):
         """
-        检测并自动识别只有在出现验证码时才调用的逻辑
+        [V4.2] 强化版验证码识别：解决截图为空、OCR结果为空、加载不充分等问题。
         """
-        try:
-            # 查找验证码图片和输入框
-            # 根据 debug_html_0.html 分析
-            # 图片: div.n-captcha > img
-            # 输入框: input[placeholder="请输入验证码"]
+        driver = self.driver
+        if not driver:
+            self._log("错误: 驱动未初始化，无法处理验证码")
+            return False
             
-            # 使用更宽泛的查找以免 DOM 微调失效
-            captcha_imgs = self.driver.find_elements(By.CSS_SELECTOR, "div.n-captcha img")
+        try:
+            # 1. 查找必备元素
+            captcha_imgs = driver.find_elements(By.CSS_SELECTOR, "div.n-captcha img")
             input_box = None
-            inputs = self.driver.find_elements(By.TAG_NAME, "input")
-            for inp in inputs:
-                ph = inp.get_attribute("placeholder")
-                label = inp.get_attribute("aria-label")
-                if (ph and "验证码" in ph) or (label and "验证码" in label):
+            for inp in driver.find_elements(By.TAG_NAME, "input"):
+                ph = inp.get_attribute("placeholder") or ""
+                if "验证码" in ph:
                     input_box = inp
                     break
             
-            if captcha_imgs and input_box:
-                img_el = captcha_imgs[0]
-                if img_el.is_displayed():
-                    # 1. 点击刷新 (根据用户要求)
-                    if refresh_first:
-                        try:
-                            refresh_btn = self.driver.find_element(By.CSS_SELECTOR, "div.n-captcha i.refresh-icon")
-                            refresh_btn.click()
-                            self._log("点击了验证码刷新按钮")
-                            time.sleep(random.uniform(1, 2)) # 等待新图片加载
-                        except Exception as e:
-                            self._log(f"刷新验证码失败: {e}")
+            if not captcha_imgs or not input_box:
+                return False
+                
+            img_el = captcha_imgs[0]
+            if not img_el.is_displayed():
+                return False
 
-                    src = img_el.get_attribute("src")
-                    if src and "blob:" in src and len(src) > 10:
-                        self._log("检测到验证码，准备识别...")
-                        
-                        # 截图
-                        screenshot = img_el.screenshot_as_png
+            if refresh_first:
+                self._refresh_captcha()
+
+            # 2. 识别循环 (通过刷新解决 OCR 结果为空的情况)
+            final_res = ""
+            last_src = ""
+            max_ocr_attempts = 5
+            for attempt in range(max_ocr_attempts):
+                # [关键修正] 每次循环重新获取元素，防止刷新后 DOM 引用失效或获取旧图缓存
+                try:
+                    current_imgs = driver.find_elements(By.CSS_SELECTOR, "div.n-captcha img")
+                    if not current_imgs:
+                        self._log("警告: 验证码图片元素丢失")
+                        break
+                    img_el = current_imgs[0]
+                    src = img_el.get_attribute("src") or ""
+                    
+                    # 打印特征用于 Debug
+                    src_tag = src[-15:] if len(src) > 15 else src
+                    self._log(f"当前识别图片 URL 特征: ...{src_tag}")
+                    
+                    if not src or "blob:" not in src:
+                        self._log(f"警告: 验证码加载异常 (src={src})")
+                        break
+                    
+                    if src == last_src and attempt > 0:
+                        self._log("检测到刷新后 URL 没变，可能页面未响应，继续尝试识别...")
+                    last_src = src
+                    
+                    # [增强检测] 确保图片内容已加载 (检查 naturalWidth)
+                    is_loaded = driver.execute_script(
+                        "return arguments[0].complete && typeof arguments[0].naturalWidth != 'undefined' && arguments[0].naturalWidth > 0", 
+                        img_el
+                    )
+                    
+                    if not is_loaded:
+                        self._log(f"等待图片加载中 (尝试 {attempt+1}/{max_ocr_attempts})... src={src_tag}")
+                        time.sleep(1.5)
+                        # 二次检查
+                        is_loaded = driver.execute_script(
+                            "return arguments[0].complete && (arguments[0].naturalWidth > 0)", 
+                            img_el
+                        )
+                    
+                    screenshot = img_el.screenshot_as_png
+                    if screenshot:
                         img = Image.open(io.BytesIO(screenshot))
+                        # 转换模式，ddddocr 在 RGB 下更稳
+                        if img.mode != 'RGB':
+                            img = img.convert('RGB')
                         
-                        # 识别
-                        res = self.ocr.classification(img)
-                        self._log(f"OCR 识别结果: {res}")
+                        # 识别结果处理
+                        res = self.ocr.classification(img).strip()
                         
-                        # 填入
-                        input_box.clear()
-                        input_box.send_keys(res)
-                        time.sleep(random.uniform(1, 2))
-                        return True
-            return False
+                        # [V4.4] 如果识别为空或过短，尝试增强对比度重试
+                        if not res or len(res) < 2:
+                            from PIL import ImageEnhance
+                            enhancer = ImageEnhance.Contrast(img)
+                            img_enhanced = enhancer.enhance(2.0) # 增强对比度
+                            res_enhanced = self.ocr.classification(img_enhanced).strip()
+                            if res_enhanced:
+                                res = res_enhanced
+                                self._log(f"  (使用图像增强识别成功)")
+
+                        self._log(f"OCR 识别过程 (尝试 {attempt+1}/{max_ocr_attempts}) -> 结果: [{res}]")
+                        
+                        if res:
+                            final_res = res
+                            break
+                        else:
+                            # 识别为空，记录额外日志以便排查方案
+                            self._log(f"识别为空 (URL：...{src_tag}, 宽：{img.width}, 高：{img.height})")
+                    else:
+                        self._log(f"截图为空 (尝试 {attempt+1}/{max_ocr_attempts})")
+                except Exception as e:
+                    self._log(f"识别环节异常: {e}")
+                
+                if attempt < max_ocr_attempts - 1:
+                    self._log("识别为空或需重试，准备刷新...")
+                    self._refresh_captcha()
+
+            # 3. 填入
+            if final_res:
+                input_box.clear()
+                for char in final_res:
+                    input_box.send_keys(char)
+                    time.sleep(random.uniform(0.1, 0.3))
+                self._log(f"验证码填入成功: [{final_res}]")
+                time.sleep(1.5) # 稍作等待确保 DOM 反应过来
+                return True
+            else:
+                self._log("警告: 验证码识别连续失败（空结果），跳过填写")
+                return False
+
         except Exception as e:
-            self._log(f"验证码处理异常（非阻断）: {e}")
-        
-        return False
+            self._log(f"验证码模块崩溃: {e}")
+            return False
 
     def goto_search_page(self):
         url = "http://www.ccgp-shandong.gov.cn/xxgk"
@@ -365,39 +455,58 @@ class BrowserEngine:
 
         # 4. 点击查询 (带重试机制)
         try:
-            try:
-                refresh_btn = self.driver.find_element(By.CSS_SELECTOR, "div.n-captcha i.refresh-icon")
-                refresh_btn.click()
-                self._log("强制刷新验证码...")
-                time.sleep(random.uniform(1, 2)) 
-            except: pass
-
+            # 调整操作顺序：1. 先设置每页条目数 2. 再处理验证码 (根据用户纠正)
             max_search_attempts = 5
             search_success = False
             for attempt in range(max_search_attempts):
-                self.solve_captcha(refresh_first=(attempt > 0))
-                
-                # 3.5 调整页面条数 (每次查询前确保)
+                # 1. 优先调整页面条数
                 self.ensure_page_size_15()
+                time.sleep(random.uniform(*self.wait_action_delay))
+                
+                # 2. 处理验证码
+                self.solve_captcha(refresh_first=(attempt > 0))
+
 
                 buttons = self.driver.find_elements(By.TAG_NAME, "button")
                 found_btn = False
                 for btn in buttons:
-                    if btn.text and "查询" in btn.text:
+                    btn_text = btn.text.strip()
+                    if btn_text and "查询" in btn_text and btn.is_displayed():
+                        # 确保点击的是可见的查询按钮
+                        self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", btn)
+                        time.sleep(0.5)
                         btn.click()
+                        self._log(f"已点击查询按钮: [{btn_text}]")
                         found_btn = True
                         break
-                if not found_btn: break
-                time.sleep(random.uniform(2, 3))
+                if not found_btn:
+                    self._log("警告: 未在当前页面找到可见的'查询'按钮")
+                    break
+                
+                # 点击后等待加载完成或报错弹出
+                time.sleep(random.uniform(2.5, 4.0)) 
+                # [判定标准 V4.3]
                 error = self.check_search_error()
                 if error == "captcha_error":
-                    self._log(f"警告: 识别错误 (尝试 {attempt+1}/{max_search_attempts})...")
+                    self._log(f"警告: 验证码识别错误 (尝试 {attempt+1}/{max_search_attempts})")
                     continue
+                
+                # 显式判定：只要出现 1) 结果总数(包括0) 2) 或者当前页出现了数据行，即视为通过
                 res_count = self.get_result_count()
+                rows = self.driver.find_elements(By.CSS_SELECTOR, "table:not(.el-date-table) tbody tr")
+                visible_rows = [r for r in rows if r.is_displayed()]
+
                 if res_count >= 0:
-                    self._log(f"OK: 查询成功，总数: {res_count}")
+                    self._log(f"OK: 查询成功! (总条数: {res_count}, 当前页可见行: {len(visible_rows)})")
                     search_success = True
                     break
+                elif len(visible_rows) > 0:
+                    self._log(f"OK: 查询成功! (检测到数据行，当前页可见行: {len(visible_rows)})")
+                    search_success = True
+                    break
+                else:
+                    self._log(f"警告: 查询未响应或识别已失效 (尝试 {attempt+1})，拟执行重试...")
+                    continue
             return search_success
         except Exception as e:
             self._log(f"搜索提交出错: {e}")
@@ -479,8 +588,13 @@ class BrowserEngine:
                                 break
                     
                     # 实时输出扫描状态日志
-                    status_text = f"命中关键词：{match_kw}" if is_match else "跳过"
+                    status_text = f"命中关键词：{match_kw}" if is_match else "未命中跳过"
                     self._log(f"  {title} [{status_text}]")
+                    
+                    # 无论命中或跳过，均打印分割线
+                    if not is_match:
+                        self._log("----------")
+
                     
                     # --- V4.1 修复: 若未命中，通过外层构造空 url 占位记录，让循环能继续进行 ---
                     if not is_match:
@@ -534,8 +648,8 @@ class BrowserEngine:
                         self.driver.switch_to.window(new_handle)
                         self._log("已打开详情页 Tab，模拟浏览停留...")
                         
-                        # 增加基础停留时间以应对封禁和加载缓慢
-                        time.sleep(random.uniform(3.0, 5.0))
+                        # 增加基础停留时间以应对封禁和加载缓慢，使用 .env 配置
+                        time.sleep(random.uniform(*self.wait_detail))
                         detail_url = self.driver.current_url
                         
                         # 首先尝试显式等待发布时间的文本框出现，确保页面已完成渲染
@@ -662,7 +776,7 @@ class BrowserEngine:
             if next_btn.is_enabled() and "disabled" not in btn_class:
                 next_btn.click()
                 self._log("已点击下一页按钮")
-                time.sleep(random.uniform(2, 3)) # 等待加载
+                time.sleep(random.uniform(*self.wait_next_page)) # 等待加载
                 
                 # 翻页后可能需要验证码！检测并处理
                 max_attempts = 5
@@ -680,19 +794,27 @@ class BrowserEngine:
                             if btn.text and "查询" in btn.text:
                                 btn.click()
                                 self._log("点击了查询按钮")
-                                time.sleep(random.uniform(2, 3))
+                                time.sleep(random.uniform(*self.wait_search))
                                 break
                         
-                        # 检查是否有错误提示
                         error = self.check_search_error()
                         if error == "captcha_error":
-                            self._log("警告: 验证码识别错误，正在重试...")
+                            self._log(f"警告: 验证码识别错误 (尝试 {attempt+1}/5)")
                             continue
-                        else:
-                            # 没有错误提示，说明可能成功了
+                        
+                        # [判定标准 V4.3]
+                        res_count = self.get_result_count()
+                        rows = self.driver.find_elements(By.CSS_SELECTOR, "table:not(.el-date-table) tbody tr")
+                        visible_rows = [r for r in rows if r.is_displayed()]
+
+                        if res_count >= 0 or len(visible_rows) > 0:
+                            self._log(f"OK: 翻页/查询成功 (统计: {res_count}, 可见行: {len(visible_rows)})")
                             break
+                        else:
+                            self._log(f"警告: 翻页结果未正常展示，尝试重试 (尝试 {attempt+1})")
+                            continue
                     else:
-                        # 没有检测到验证码
+                        # 没有检测到验证码，直接退出重试检查，等待常规加载
                         break
                 
                 return True
@@ -740,7 +862,7 @@ class BrowserEngine:
             # 回车触发跳转
             inp.send_keys(Keys.ENTER)
             self._log(f"已输入页码 {page_num} 并按下回车")
-            time.sleep(random.uniform(2, 3))
+            time.sleep(random.uniform(*self.wait_next_page))
             
             # 验证跳转结果
             new_val = inp.get_attribute("value")
@@ -756,7 +878,7 @@ class BrowserEngine:
                     if btn.text and "查询" in btn.text:
                         btn.click()
                         self._log("点击了查询按钮")
-                        time.sleep(random.uniform(2, 3))
+                        time.sleep(random.uniform(*self.wait_search))
                         break
             
             return True
@@ -797,9 +919,17 @@ class BrowserEngine:
         检查当前页面是否显示验证码
         """
         try:
-            captcha_divs = self.driver.find_elements(By.CSS_SELECTOR, "div.n-captcha")
-            if captcha_divs and captcha_divs[0].is_displayed():
-                return True
+            # 严格判定：存在 n-captcha 且其内部的 img 确实是可见的
+            captcha_imgs = self.driver.find_elements(By.CSS_SELECTOR, "div.n-captcha img")
+            if captcha_imgs:
+                for img in captcha_imgs:
+                    if img.is_displayed():
+                        # 二次确认其父容器是否可见
+                        try:
+                            parent = img.find_element(By.XPATH, "..")
+                            if parent.is_displayed():
+                                return True
+                        except: pass
             return False
         except:
             return False

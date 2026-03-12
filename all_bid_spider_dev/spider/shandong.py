@@ -382,6 +382,19 @@ class Shandong(object):
             total_matched = 0
             seen_ids = set() # 用于聚合去重 (ID级)
 
+            from datetime import datetime, timedelta
+            
+            # 计算时间窗口 (以 14:00 为界)
+            now = datetime.now()
+            today_14 = now.replace(hour=14, minute=0, second=0, microsecond=0)
+            yesterday_14 = today_14 - timedelta(days=1)
+            
+            # 这里的 window_end 是今日 14:00，window_start 是昨日 14:00
+            window_end = today_14
+            window_start = yesterday_14
+            
+            self._log(f"[时间窗过滤] 目标范围: {window_start.strftime('%Y-%m-%d %H:%M:%S')} 至 {window_end.strftime('%Y-%m-%d %H:%M:%S')}")
+
             for config in search_configs:
                 self._log(f"=== 广域扫描开始: 区域=[{config['desc']}] ===")
                 
@@ -395,7 +408,9 @@ class Shandong(object):
                     raise RuntimeError("关键搜索执行失败，放弃本次完整抓取任务。")
                         
                 current_page_idx = 1
-                while current_page_idx <= max_pages:
+                stop_current_area = False
+                
+                while current_page_idx <= max_pages and not stop_current_area:
                     self._log(f"--- 扫描列表: [{config['desc']}] 第 {current_page_idx} 页 ---")
                     
                     records = self.browser.extract_records(keywords=keywords)
@@ -416,7 +431,29 @@ class Shandong(object):
                         
                         if rec_id in seen_ids:
                             continue 
-                            
+                        
+                        # --- 发布时间实时截断逻辑 ---
+                        pub_time_str = rec.get('publishDatetime', '')
+                        if pub_time_str:
+                            try:
+                                # 假设格式为 "2026-02-05 10:46:14"
+                                pub_dt = datetime.strptime(pub_time_str, "%Y-%m-%d %H:%M:%S")
+                                
+                                # 1. 今日 14:00 之后的数据直接跳过 (Skip)
+                                if pub_dt > window_end:
+                                    self._log(f"[SKIP] 数据时间 [{pub_time_str}] 晚于今日 14:00，跳过。")
+                                    seen_ids.add(rec_id)
+                                    continue
+                                
+                                # 2. 昨日 14:00 之前的数据直接停止 (Stop)
+                                if pub_dt < window_start:
+                                    self._log(f"[STOP] 项目: [{rec_title}], 数据时间 [{pub_time_str}] 早于昨日 14:00，停止当前区域扫描。")
+                                    stop_current_area = True
+                                    break
+                                    
+                            except Exception as te:
+                                self._log(f"时间解析异常: {te} (原始数据: {pub_time_str})")
+                        
                         # 检查标题是否包含任一关键词 (命中逻辑)
                         is_match = False
                         for kw in keywords:
@@ -440,12 +477,16 @@ class Shandong(object):
                             # 未命中的项目仅记录 ID 防止重复扫描，但不解析详情
                             seen_ids.add(rec_id)
                     
+                    if stop_current_area:
+                        break
+
                     if not self.browser.next_page() or current_page_idx >= max_pages:
                         break
                     current_page_idx += 1
                     
                 # 区域间留间歇
-                time.sleep(random.uniform(2, 4))
+                wait_interval = (float(os.getenv("WAIT_CRAWL_INTERVAL_MIN", "2.0")), float(os.getenv("WAIT_CRAWL_INTERVAL_MAX", "4.0")))
+                time.sleep(random.uniform(*wait_interval))
                 
             self._log(f"扫描完成。共扫描: {total_scanned} 条，命中标题: {total_matched} 条。")
             
