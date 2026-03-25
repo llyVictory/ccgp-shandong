@@ -570,4 +570,4 @@ if __name__ == "__main__":
 
     import uvicorn
     # access_log=False：彻底关闭请求记录（屏蔽轮询日志），同时保留启动信息
-    uvicorn.run(app, host="0.0.0.0", port=8091, access_log=False)
+    uvicorn.run(app, host="0.0.0.0", port=8092, access_log=False)

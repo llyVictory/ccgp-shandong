@@ -10,3 +10,7 @@ test_*.py
 schedule_config.json
 bak*/
 venv/
+
+
+.idea
+*.zip
