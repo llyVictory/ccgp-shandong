@@ -393,15 +393,29 @@ class Shandong(object):
 
             from datetime import datetime, timedelta
             
-            # 计算时间窗口 (以 14:00 为界)
+            # [V4.8] 动态计算时间窗口
             now = datetime.now()
+            # 默认：以 14:00 为界 (适配定时任务模式)
             today_14 = now.replace(hour=14, minute=0, second=0, microsecond=0)
             yesterday_14 = today_14 - timedelta(days=1)
             
-            # 这里的 window_end 是今日 14:00，window_start 是昨日 14:00
-            window_end = today_14
             window_start = yesterday_14
+            window_end = today_14
             
+            # 如果用户指定了自定义起止时间 (一次性任务/测试模式)
+            if start_time and start_time != "0" and len(start_time) >= 10:
+                try:
+                    # 将 YYYY-MM-DD 转为起始点的 00:00:00
+                    window_start = datetime.strptime(start_time[:10], "%Y-%m-%d")
+                    # 如果有 end_time，转为终点的 23:59:59
+                    if end_time and len(end_time) >= 10:
+                        window_end = datetime.strptime(end_time[:10], "%Y-%m-%d").replace(hour=23, minute=59, second=59)
+                    else:
+                        window_end = now # 默认到当前
+                    self._log(f"[模式识别] 检测到用户自选日期，切换时间窗过滤为全天范围。")
+                except Exception as e:
+                    self._log(f"[WARN] 解析用户时间参数失败: {e}，将回退到默认 14:00 窗口。")
+
             self._log(f"[时间窗过滤] 目标范围: {window_start.strftime('%Y-%m-%d %H:%M:%S')} 至 {window_end.strftime('%Y-%m-%d %H:%M:%S')}")
 
             for config in search_configs:
@@ -450,13 +464,13 @@ class Shandong(object):
                                 
                                 # 1. 今日 14:00 之后的数据直接跳过 (Skip)
                                 if pub_dt > window_end:
-                                    self._log(f"[SKIP] 数据时间 [{pub_time_str}] 晚于今日 14:00，跳过。")
+                                    self._log(f"[SKIP] 数据时间 [{pub_time_str}] 晚于目标范围截止点 [{window_end.strftime('%Y-%m-%d %H:%M:%S')}]，跳过。")
                                     seen_ids.add(rec_id)
                                     continue
                                 
                                 # 2. 昨日 14:00 之前的数据直接停止 (Stop)
                                 if pub_dt < window_start:
-                                    self._log(f"[STOP] 项目: [{rec_title}], 数据时间 [{pub_time_str}] 早于昨日 14:00，停止当前区域扫描。")
+                                    self._log(f"[STOP] 项目: [{rec_title}], 数据时间 [{pub_time_str}] 早于目标范围起始点 [{window_start.strftime('%Y-%m-%d %H:%M:%S')}]，停止当前区域扫描。")
                                     stop_current_area = True
                                     break
                                     
