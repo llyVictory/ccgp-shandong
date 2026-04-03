@@ -357,7 +357,7 @@ class Shandong(object):
         
         # 0. 优先从环境变量读取最大页数
         if max_pages is None:
-            max_pages = int(os.getenv("MAX_PAGES", "100"))
+            max_pages = int(os.getenv("MAX_PAGES", "9999")) # 默认放开到 9999 页
             
         all_data = []
         self.browser = BrowserEngine(headless=False)
@@ -365,7 +365,7 @@ class Shandong(object):
         
         # 1. 策略转换与预警
         if keywords is None:
-            keywords = ["大学", "学校", "学院", "教育厅", "教育电视台", "教育招生考试院", "电教馆", "电化教育馆"]
+            keywords = ["大学", "学校", "学院", "教育厅", "教育电视台", "教育招生考试院", "电教馆", "电化教育馆","中学","小学"]
         
         self._log(f"[V4.0 定制版] 启动列表过滤模式")
         self._log(f"   本地匹配关键词: {keywords}")

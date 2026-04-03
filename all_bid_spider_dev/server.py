@@ -23,7 +23,7 @@ def split_keywords(kw_str):
     处理关键词字符串，支持中文和英文逗号分隔
     """
     if not kw_str:
-        return ["大学", "学校", "学院", "教育厅", "教育电视台", "教育招生考试院", "电教馆", "电化教育馆"]
+        return ["大学", "学校", "学院", "教育厅", "教育电视台", "教育招生考试院", "电教馆", "电化教育馆","中学","小学"]
     # 支持中文逗号和英文逗号
     kw_str = kw_str.replace("，", ",")
     return [k.strip() for k in kw_str.split(",") if k.strip()]
@@ -367,7 +367,7 @@ def run_scheduled_spider():
         return
     
     download_path = config.get("downloadPath", "D:\\spider_downloads_C")
-    keywords_str = config.get("keywords", "大学，学校，学院，教育厅，教育电视台，教育招生考试院，电教馆，电化教育馆")
+    keywords_str = config.get("keywords", "大学，学校，学院，教育厅，教育电视台，教育招生考试院，电教馆，电化教育馆，中学，小学")
     
     # 确保下载目录存在
     os.makedirs(download_path, exist_ok=True)
@@ -388,8 +388,8 @@ def run_scheduled_spider():
         scheduled_task_status["running"] = False
         return
 
-    # 执行爬取（定时任务不限制页数，设为 999 代表全量爬取）
-    max_pages = 999
+    # 执行爬取（定时任务不限制页数，设为 9999 代表全量爬取）
+    max_pages = 9999
     spider = Shandong(use_proxy=False)
     spider.log_func = log_callback  # 设置日志回调
     

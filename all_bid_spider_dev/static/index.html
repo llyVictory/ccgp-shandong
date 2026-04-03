@@ -353,7 +353,7 @@
             </div> -->
             <!-- 隐藏的配置（固定值） -->
             <input type="hidden" id="startPage" value="1">
-            <input type="hidden" id="maxPages" value="100">
+            <input type="hidden" id="maxPages" value="9999">
             <input type="checkbox" id="useProxy" style="display: none;">
 
             <!-- 任务配置区域：双栏布局 -->
@@ -366,7 +366,7 @@
 
                     <div class="form-group">
                         <label>检索关键词（中文逗号分隔）</label>
-                        <textarea id="crawlKeywords" placeholder="例如: 大学，学校，学院">大学，学校，学院，教育厅，教育电视台，教育招生考试院，电教馆，电化教育馆</textarea>
+                        <textarea id="crawlKeywords" placeholder="例如: 大学，学校，学院">大学，学校，学院，教育厅，教育电视台，教育招生考试院，电教馆，电化教育馆，中学，小学</textarea>
                     </div>
 
                     <div class="form-group">
@@ -414,7 +414,7 @@
 
                     <div class="form-group">
                         <label>检索关键词（中文逗号分隔）</label>
-                        <textarea id="scheduleKeywords" placeholder="例如: 大学，学校，学院">大学，学校，学院，教育厅，教育电视台，教育招生考试院，电教馆，电化教育馆</textarea>
+                        <textarea id="scheduleKeywords" placeholder="例如: 大学，学校，学院">大学，学校，学院，教育厅，教育电视台，教育招生考试院，电教馆，电化教育馆，中学，小学</textarea>
                     </div>
 
                     <div class="form-group">
@@ -577,7 +577,7 @@
                         <div style="color: #22c55e; font-size: 0.95rem; line-height: 1.8;">
                             <div>✓ 定时任务已启用</div>
                             <div>✓ 每天 ${String(data.config.hour).padStart(2, '0')}:${String(data.config.minute).padStart(2, '0')} 执行</div>
-                            <div>✓ 关键词：${data.config.keywords || '大学，学校，学院，教育厅，教育电视台，教育招生考试院，电教馆，电化教育馆'}</div>
+                            <div>✓ 关键词：${data.config.keywords || '大学，学校，学院，教育厅，教育电视台，教育招生考试院，电教馆，电化教育馆，中学，小学'}</div>
                             <div>✓ 爬取区域：${(data.config.provincial ? '省级' : '') + (data.config.provincial && data.config.cityCountyAll ? '+' : '') + (data.config.cityCountyAll ? '市区县-全部' : '')}</div>
                             <div>✓ 保存路径：${data.config.downloadPath}</div>
                         </div>
@@ -589,7 +589,7 @@
                         document.getElementById('scheduleHour').value = data.config.hour;
                         document.getElementById('scheduleMinute').value = String(data.config.minute).padStart(2, '0');
                         document.getElementById('downloadPath').value = data.config.downloadPath;
-                        document.getElementById('scheduleKeywords').value = data.config.keywords || '大学，学校，学院，教育厅，教育电视台，教育招生考试院，电教馆，电化教育馆';
+                        document.getElementById('scheduleKeywords').value = data.config.keywords || '大学，学校，学院，教育厅，教育电视台，教育招生考试院，电教馆，电化教育馆，中学，小学';
                     } else {
                         document.getElementById('scheduleStatus').style.display = 'none';
                     }
