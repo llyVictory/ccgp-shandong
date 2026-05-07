@@ -351,7 +351,7 @@ class Shandong(object):
             
         return final_rows
 
-    def run(self, max_pages=None, start_page=1, title="", start_time="", end_time="", area="370000", keywords=None):
+    def run(self, max_pages=None, start_page=1, title="", start_time="", end_time="", area="370000", keywords=None, is14Filter=False):
         from spider.browser_engine import BrowserEngine
         import os
         
@@ -395,7 +395,8 @@ class Shandong(object):
             
             # [V4.8] 动态计算时间窗口
             now = datetime.now()
-            # 默认：以 14:00 为界 (适配定时任务模式)
+            
+            # 默认窗口（定时任务逻辑）：昨天 14:00 ~ 今天 14:00
             today_14 = now.replace(hour=14, minute=0, second=0, microsecond=0)
             yesterday_14 = today_14 - timedelta(days=1)
             
@@ -406,13 +407,22 @@ class Shandong(object):
             if start_time and start_time != "0" and len(start_time) >= 10:
                 try:
                     # 将 YYYY-MM-DD 转为起始点的 00:00:00
-                    window_start = datetime.strptime(start_time[:10], "%Y-%m-%d")
+                    base_start = datetime.strptime(start_time[:10], "%Y-%m-%d")
                     # 如果有 end_time，转为终点的 23:59:59
                     if end_time and len(end_time) >= 10:
-                        window_end = datetime.strptime(end_time[:10], "%Y-%m-%d").replace(hour=23, minute=59, second=59)
+                        base_end = datetime.strptime(end_time[:10], "%Y-%m-%d").replace(hour=23, minute=59, second=59)
                     else:
-                        window_end = now # 默认到当前
-                    self._log(f"[模式识别] 检测到用户自选日期，切换时间窗过滤为全天范围。")
+                        base_end = now # 默认到当前
+
+                    if is14Filter:
+                        # [新逻辑] 选中 14:00 偏移后：前日 14:00 至 后日 14:00
+                        window_start = base_start.replace(hour=14, minute=0, second=0, microsecond=0)
+                        window_end = base_end.replace(hour=14, minute=0, second=0, microsecond=0)
+                        self._log(f"[模式识别] 启用 14:00 偏移过滤: {window_start} ~ {window_end}")
+                    else:
+                        window_start = base_start
+                        window_end = base_end
+                        self._log(f"[模式识别] 检测到用户自选日期，切换时间窗过滤为全天范围。")
                 except Exception as e:
                     self._log(f"[WARN] 解析用户时间参数失败: {e}，将回退到默认 14:00 窗口。")
 

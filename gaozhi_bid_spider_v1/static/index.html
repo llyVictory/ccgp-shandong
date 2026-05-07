@@ -382,6 +382,12 @@
                                 <input type="date" id="endTime">
                             </div>
                         </div>
+                        <div style="margin-top: 1rem; padding: 0.75rem; background: rgba(99, 102, 241, 0.05); border-radius: 0.5rem; border: 1px dashed rgba(99, 102, 241, 0.3);">
+                            <label style="display: flex; align-items: center; gap: 0.75rem; cursor: pointer; margin-bottom: 0;">
+                                <input type="checkbox" id="is14Filter">
+                                <span style="font-size: 0.95rem; color: #818cf8;">启用 14:00 偏移过滤 (前日 14:00 后 至 后日 14:00 前)</span>
+                            </label>
+                        </div>
                     </div>
 
                     <button id="startBtn"
@@ -650,7 +656,8 @@
                     maxPages: parseInt(document.getElementById('maxPages').value),
                     title: "",
                     useProxy: document.getElementById('useProxy').checked,
-                    keywords: keywords
+                    keywords: keywords,
+                    is14Filter: document.getElementById('is14Filter').checked
                 };
 
                 startBtn.disabled = true;

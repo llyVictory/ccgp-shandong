@@ -342,9 +342,10 @@ class Shandong(object):
             
         return final_rows
 
-    def run(self, max_pages=1, start_page=1, title="", start_time="", end_time="", area="370000", keywords=None):
+    def run(self, max_pages=1, start_page=1, title="", start_time="", end_time="", area="370000", keywords=None, is14Filter=False):
         from spider.browser_engine import BrowserEngine
         import os
+        from datetime import datetime, timedelta
         
         all_data = []
         self.browser = BrowserEngine(headless=False)
@@ -352,7 +353,15 @@ class Shandong(object):
         
         # 1. 预加载学校清单（用于本地精筛）
         # 从环境变量读取绝对路径，若无则使用默认相对路径
-        monitor_file = os.getenv("MONITOR_SCHOOLS_PATH", r"d:\LLYWORK\spider\bid_spider\projectC_bid_spider_v1\monitor_schools.xlsx")
+        monitor_file = os.getenv("MONITOR_SCHOOLS_PATH", r"d:\LLYWORK\spider\bid_spider\gaozhi_bid_spider_v1\monitor_schools.xlsx")
+        if not os.path.exists(monitor_file):
+            # 兼容旧路径
+            monitor_file = r"d:\LLYWORK\spider\bid_spider\projectC_bid_spider_v1\monitor_schools.xlsx"
+            
+        if not os.path.exists(monitor_file):
+            # 再次尝试当前目录
+            monitor_file = "monitor_schools.xlsx"
+
         if not os.path.exists(monitor_file):
             self._log(f"❌ 未找到监控清单文件: {monitor_file}")
             return []
@@ -376,12 +385,41 @@ class Shandong(object):
         try:
             self.browser.init_driver()
             
+            now = datetime.now()
+            
+            # 默认窗口（定时任务逻辑）：昨天 14:00 ~ 今天 14:00
+            today_14 = now.replace(hour=14, minute=0, second=0, microsecond=0)
+            yesterday_14 = today_14 - timedelta(days=1)
+            
+            window_start = yesterday_14
+            window_end = today_14
+            
+            # 处理自定义时间
+            if start_time and start_time != "0" and len(start_time) >= 10:
+                try:
+                    base_start = datetime.strptime(start_time[:10], "%Y-%m-%d")
+                    if end_time and len(end_time) >= 10:
+                        base_end = datetime.strptime(end_time[:10], "%Y-%m-%d").replace(hour=23, minute=59, second=59)
+                    else:
+                        base_end = now
+
+                    if is14Filter:
+                        window_start = base_start.replace(hour=14, minute=0, second=0, microsecond=0)
+                        window_end = base_end.replace(hour=14, minute=0, second=0, microsecond=0)
+                        self._log(f"[模式识别] 启用 14:00 偏移过滤: {window_start} ~ {window_end}")
+                    else:
+                        window_start = base_start
+                        window_end = base_end
+                        self._log(f"[模式识别] 自选日期范围: {window_start} ~ {window_end}")
+                except Exception as e:
+                    self._log(f"⚠️ 解析时间失败: {e}")
+
+            self._log(f"[时间窗过滤] 目标范围: {window_start.strftime('%Y-%m-%d %H:%M:%S')} 至 {window_end.strftime('%Y-%m-%d %H:%M:%S')}")
+
             # 2. 确定聚合搜索模式 (智能分级)
-            # 判断是否为长周期任务（超过3天）
-            # 根据要求：摒弃全量策略，无论时间段，全部使用模糊关键词策略
             if keywords is None:
                 keywords = ["职业", "专科"]
-            self._log(f"当前任务设定 ({start_time}模式): 启用核心词组模糊匹配策略 {keywords}，摒弃全量防止数据量过载")
+            self._log(f"当前任务设定: 启用核心词组模糊匹配策略 {keywords}")
 
             search_configs = [
                 {"area": "370000", "desc": "省级"},
@@ -393,37 +431,50 @@ class Shandong(object):
 
             for config in search_configs:
                 for kw in keywords:
+                    stop_current_kw = False
                     self._log(f"=== 聚合抓取开始: 区域=[{config['desc']}] 关键词=[{kw if kw else '空'}] ===")
                     
                     self.browser.goto_search_page()
                     search_success = self.browser.perform_search(title=kw, start_time=start_time, end_time=end_time, area=config["area"])
                     
                     if not search_success and not self.browser.is_no_data_visible():
-                        self._log("❌ 搜索执行异常且未确认无数据（如连续验证码识别失败）。")
-                        self._log("❌ 为保证数据完整度，杜绝产出带有遗漏的“残缺结果”，将立刻强行终止整个抓取任务！")
-                        raise RuntimeError("关键搜索执行失败，放弃本次完整抓取任务。")
+                        self._log("❌ 搜索执行异常且未确认无数据")
+                        raise RuntimeError("关键搜索执行失败")
                         
                     current_page_idx = 1
                     while current_page_idx <= max_pages:
-                        self._log(f"--- 抓取翻页: 第 {current_page_idx} 页 ---")
+                        self._log(f"--- 抓取翻页: [{config['desc']}] [{kw}] 第 {current_page_idx} 页 ---")
                         
                         records = self.browser.extract_records()
                         if not records:
-                            # 判定是否真的结束了
                             if self.browser.is_no_data_visible():
                                 self._log("页面提示暂无数据，此搜索结束。")
                                 break
                             else:
-                                self._log("未检测到记录，可能加载失败，跳过。")
+                                self._log("未检测到记录，跳过。")
                                 break
                         
-                        # 本地精筛与数据注入
                         for rec in records:
                             rec_id = rec.get('id')
                             if rec_id in seen_ids:
-                                continue # 重复数据跳过
+                                continue
                                 
-                            # 命中逻辑：公告发布人中包含 86 所学校名称中的任何一个
+                            # --- 时间过滤检查 ---
+                            pub_time_str = rec.get('publishDatetime', '')
+                            if pub_time_str:
+                                try:
+                                    pub_dt = datetime.strptime(pub_time_str, "%Y-%m-%d %H:%M:%S")
+                                    if pub_dt > window_end:
+                                        self._log(f"[SKIP] {pub_time_str} > {window_end}")
+                                        seen_ids.add(rec_id)
+                                        continue
+                                    if pub_dt < window_start:
+                                        self._log(f"[STOP] {pub_time_str} < {window_start}")
+                                        stop_current_kw = True
+                                        break
+                                except Exception as te:
+                                    self._log(f"时间解析异常: {te}")
+
                             publisher = rec.get('publisher', '')
                             matched_school = None
                             for school_name in target_list:
@@ -432,7 +483,6 @@ class Shandong(object):
                                     break
                             
                             if matched_school:
-                                # 详情解析（这里进入详情页获取具体表格）
                                 details = self.process_item(rec)
                                 for detail in details:
                                     detail["发布人类型"] = school_type_map.get(matched_school, "")
@@ -441,25 +491,24 @@ class Shandong(object):
                                 self._log(f"🎯 命中目标: {matched_school} - {rec.get('title')}")
                             
                             raw_collected_count += 1
+                            seen_ids.add(rec_id)
                         
+                        if stop_current_kw: break
                         if not self.browser.next_page() or current_page_idx >= max_pages:
                             break
                         current_page_idx += 1
-                        
-                    # 抓取完一个组合留一点间隔
+                    
+                    if stop_current_kw:
+                        self._log(f"当前关键词 [{kw}] 已到达时间下限，切换下一个。")
                     time.sleep(random.uniform(2, 4))
                 
             self._log(f"聚合抓取结束。原始扫描: {raw_collected_count} 条，匹配目标: {len(all_data)} 条。")
                     
         except RuntimeError as re:
-            # 捕获我们自己主动抛出的阻断性异常（如连续5次验证码失败）
             self._log(f"🚨 严重错误中断: {re}")
-            # 必须清空所有已抓取的数据，强制生成一份全空只有表头的文件
-            self._log("🗑️ 已清空当前抓取的所有部分数据，确保只产生空表头。")
             all_data = []
         except Exception as e:
             self._log(f"爬虫运行异常: {e}")
-            # 如果是意外报错，原逻辑不变，依然保留已抓取的数据并退出循环
         finally:
             if self.browser:
                 self._log("任务结束，关闭浏览器...")

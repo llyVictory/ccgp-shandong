@@ -208,6 +208,7 @@ class CrawlRequest(BaseModel):
     title: str = ""
     useProxy: bool = False
     keywords: str = ""
+    is14Filter: bool = False
 
 class ScheduleTaskRequest(BaseModel):
     provincial: bool = True
@@ -275,7 +276,8 @@ def run_spider_task(task_id: str, req: CrawlRequest):
             start_time=req.startTime, 
             end_time=req.endTime, 
             area=area_list,
-            keywords=split_keywords(req.keywords)
+            keywords=split_keywords(req.keywords),
+            is14Filter=req.is14Filter
         )
         
         # 无论是否有数据，都生成 Excel 供下载（无数据则只有表头）
